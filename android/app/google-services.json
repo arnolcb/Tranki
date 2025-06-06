@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "706955664281",
+    "project_id": "tranki-d6dff",
+    "storage_bucket": "tranki-d6dff.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:706955664281:android:4b318019faa62e4b96d108",
+        "android_client_info": {
+          "package_name": "com.trankiapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBpMxOBAcI11IqEDTlLQcvytUXNJ-1s9bs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
