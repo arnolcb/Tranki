@@ -1,6 +1,7 @@
 // src/services/firebase.js
 import firestore from '@react-native-firebase/firestore';
 import auth from '@react-native-firebase/auth';
+import { formatDate } from '../utils/dateUtils'; 
 
 class FirebaseService {
   // Autenticación

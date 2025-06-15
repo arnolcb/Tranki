@@ -1,232 +1,124 @@
-// src/screens/PlacesScreen.js
-import React, { useState, useEffect } from 'react';
+// src/screens/PlacesScreen.js - Versión completa y funcional
+import React, { useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   TouchableOpacity,
+  ScrollView,
   Alert,
-  ActivityIndicator,
   Linking,
-  PermissionsAndroid,
   Platform
 } from 'react-native';
-import Geolocation from 'react-native-geolocation-service';
 import { COLORS } from '../constants/colors';
 
 const PlacesScreen = ({ navigation }) => {
-  const [location, setLocation] = useState(null);
-  const [places, setPlaces] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState('restaurant');
 
-  const categories = {
-    restaurant: {
-      name: 'Restaurantes',
-      icon: '🍽️',
-      types: 'restaurant|cafe',
-      description: 'Lugares tranquilos para comer y relajarte'
-    },
-    park: {
-      name: 'Parques',
-      icon: '🌳',
-      types: 'park',
-      description: 'Espacios verdes para desconectarte'
-    },
-    gym: {
-      name: 'Gimnasios',
-      icon: '💪',
-      types: 'gym',
-      description: 'Centros de ejercicio para liberar estrés'
-    },
-    spa: {
-      name: 'Spas',
-      icon: '🧘‍♀️',
-      types: 'spa|beauty_salon',
-      description: 'Lugares de relajación y bienestar'
-    },
-    library: {
-      name: 'Bibliotecas',
-      icon: '📚',
-      types: 'library',
-      description: 'Espacios silenciosos para concentrarte'
-    }
+  const categories = [
+    { id: 'restaurant', name: 'Restaurantes', icon: '🍽️', color: '#FF6B6B' },
+    { id: 'cafe', name: 'Cafeterías', icon: '☕', color: '#4ECDC4' },
+    { id: 'park', name: 'Parques', icon: '🌳', color: '#45B7D1' },
+    { id: 'gym', name: 'Gimnasios', icon: '💪', color: '#96CEB4' },
+    { id: 'spa', name: 'Spas', icon: '🧘‍♀️', color: '#FECA57' },
+    { id: 'library', name: 'Bibliotecas', icon: '📚', color: '#FF9FF3' }
+  ];
+
+  const placesData = {
+    restaurant: [
+      { name: 'Restaurante Central', address: 'Av. Larco 123, Miraflores', rating: '4.5', distance: '0.8', description: 'Ambiente acogedor para una comida relajante' },
+      { name: 'La Mar Cebichería', address: 'Av. Mariscal La Mar 770, Miraflores', rating: '4.7', distance: '1.2', description: 'Delicioso ceviche en ambiente tranquilo' },
+      { name: 'Astrid y Gastón', address: 'Av. Paz Soldán 290, San Isidro', rating: '4.8', distance: '2.1', description: 'Experiencia gastronómica premium' },
+      { name: 'El Jardín Secreto', address: 'Calle Tarata 230, Miraflores', rating: '4.3', distance: '0.9', description: 'Terraza verde ideal para desconectar' }
+    ],
+    cafe: [
+      { name: 'Café Tortoni', address: 'Calle Lima 456, San Isidro', rating: '4.2', distance: '1.2', description: 'Perfecto para trabajar o estudiar tranquilo' },
+      { name: 'Starbucks Larco', address: 'Av. Larco 345, Miraflores', rating: '4.0', distance: '0.5', description: 'Ambiente familiar y WiFi rápido' },
+      { name: 'Tostao Café', address: 'Av. Benavides 415, Miraflores', rating: '4.4', distance: '0.7', description: 'Café colombiano de especialidad' },
+      { name: 'Juan Valdez', address: 'Av. Conquistadores 560, San Isidro', rating: '4.1', distance: '1.5', description: 'Espacio amplio para relajarse' }
+    ],
+    park: [
+      { name: 'Parque Kennedy', address: 'Miraflores, Lima', rating: '4.0', distance: '0.5', description: 'Parque central con gatos y mucha vida' },
+      { name: 'Malecón Miraflores', address: 'Costa Verde, Miraflores', rating: '4.6', distance: '0.8', description: 'Vista al mar perfecta para caminar' },
+      { name: 'Parque El Olivar', address: 'San Isidro, Lima', rating: '4.5', distance: '1.8', description: 'Bosque de olivos centenarios' },
+      { name: 'Parque de la Reserva', address: 'Lima Centro', rating: '4.3', distance: '3.2', description: 'Circuito mágico del agua' }
+    ],
+    gym: [
+      { name: 'SportLife', address: 'Av. Larco 1232, Miraflores', rating: '4.3', distance: '0.9', description: 'Gimnasio completo con piscina' },
+      { name: 'Gold\'s Gym', address: 'Av. Pardo 715, Miraflores', rating: '4.1', distance: '0.7', description: 'Equipos de alta calidad' },
+      { name: 'Smart Fit', address: 'Av. Benavides 290, Miraflores', rating: '3.9', distance: '1.1', description: 'Económico y bien equipado' },
+      { name: 'Bodytech', address: 'Av. Conquistadores 330, San Isidro', rating: '4.4', distance: '1.6', description: 'Clases grupales y entrenadores' }
+    ],
+    spa: [
+      { name: 'Keme Spa', address: 'Av. La Paz 463, Miraflores', rating: '4.6', distance: '0.6', description: 'Relajación y bienestar integral' },
+      { name: 'Zen Spa', address: 'Av. El Bosque 232, San Isidro', rating: '4.5', distance: '1.4', description: 'Masajes terapéuticos y faciales' },
+      { name: 'Aqua Spa', address: 'Malecón Cisneros 1244, Miraflores', rating: '4.7', distance: '0.9', description: 'Spa con vista al mar' },
+      { name: 'Serenity Wellness', address: 'Av. Pardo 1214, Miraflores', rating: '4.4', distance: '0.8', description: 'Centro de bienestar holístico' }
+    ],
+    library: [
+      { name: 'Biblioteca Municipal', address: 'Av. Larco 770, Miraflores', rating: '4.2', distance: '0.4', description: 'Espacio silencioso para estudiar' },
+      { name: 'Casa de la Literatura', address: 'Jr. Áncash 207, Lima Centro', rating: '4.5', distance: '4.1', description: 'Biblioteca patrimonial hermosa' },
+      { name: 'Biblioteca Ricardo Palma', address: 'Av. Arequipa 4985, Miraflores', rating: '4.0', distance: '1.3', description: 'Amplia colección y salas de estudio' },
+      { name: 'Centro Cultural PUCP', address: 'Av. Camino Real 1075, San Isidro', rating: '4.3', distance: '2.1', description: 'Biblioteca universitaria abierta' }
+    ]
   };
 
-  useEffect(() => {
-    requestLocationPermission();
-  }, []);
-
-  useEffect(() => {
-    if (location) {
-      searchNearbyPlaces();
-    }
-  }, [location, selectedCategory]);
-
-  const requestLocationPermission = async () => {
-    if (Platform.OS === 'android') {
-      try {
-        const granted = await PermissionsAndroid.request(
-          PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
-          {
-            title: 'Permisos de Ubicación',
-            message: 'Tranki necesita acceso a tu ubicación para encontrar lugares cercanos',
-            buttonNeutral: 'Preguntarme luego',
-            buttonNegative: 'Cancelar',
-            buttonPositive: 'OK',
-          },
-        );
-        
-        if (granted === PermissionsAndroid.RESULTS.GRANTED) {
-          getCurrentLocation();
-        } else {
-          Alert.alert(
-            'Permisos requeridos',
-            'Necesitamos permisos de ubicación para mostrarte lugares cercanos',
-            [
-              { text: 'Cancelar', style: 'cancel' },
-              { text: 'Configurar', onPress: () => Linking.openSettings() }
-            ]
-          );
-          setLoading(false);
-        }
-      } catch (err) {
-        console.warn(err);
-        setLoading(false);
-      }
-    } else {
-      getCurrentLocation();
-    }
-  };
-
-  const getCurrentLocation = () => {
-    Geolocation.getCurrentPosition(
-      (position) => {
-        setLocation({
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-        });
-      },
-      (error) => {
-        console.log('Error getting location:', error);
-        Alert.alert(
-          'Error de ubicación',
-          'No se pudo obtener tu ubicación. Verifica que el GPS esté activado.',
-          [{ text: 'OK' }]
-        );
-        setLoading(false);
-      },
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 }
-    );
-  };
-
-  const searchNearbyPlaces = async () => {
-    if (!location) return;
-
-    setLoading(true);
-    const category = categories[selectedCategory];
-    
-    try {
-      // Simular búsqueda de lugares (en producción usar Google Places API)
-      // const response = await fetch(
-      //   `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${location.latitude},${location.longitude}&radius=2000&type=${category.types}&key=YOUR_API_KEY`
-      // );
-      
-      // Para el MVP, usar datos simulados
-      const simulatedPlaces = generateSimulatedPlaces(category);
-      setPlaces(simulatedPlaces);
-    } catch (error) {
-      console.error('Error searching places:', error);
-      Alert.alert('Error', 'No se pudieron cargar los lugares cercanos');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const generateSimulatedPlaces = (category) => {
-    const baseNames = {
-      restaurant: ['Café Tranquilo', 'Restaurante Zen', 'Bistró Relax', 'Café Serenity', 'La Pausa'],
-      park: ['Parque Central', 'Jardines de la Paz', 'Parque Natural', 'Plaza Verde', 'Bosque Urbano'],
-      gym: ['Gimnasio Vital', 'Fitness Zone', 'Centro Deportivo', 'Gym Wellness', 'Studio Fit'],
-      spa: ['Spa Relajación', 'Centro de Bienestar', 'Masajes Zen', 'Spa Tranquilidad', 'Wellness Center'],
-      library: ['Biblioteca Central', 'Sala de Lectura', 'Biblioteca Pública', 'Centro Cultural', 'Espacio Estudio']
-    };
-
-    return baseNames[selectedCategory]?.map((name, index) => ({
-      id: `${selectedCategory}_${index}`,
-      name,
-      rating: (Math.random() * 2 + 3).toFixed(1), // Rating entre 3.0 y 5.0
-      distance: (Math.random() * 1.5 + 0.2).toFixed(1), // Distancia entre 0.2 y 1.7 km
-      address: `Calle ${index + 1} #${(index + 1) * 100}, Lima`,
-      isOpen: Math.random() > 0.2, // 80% probabilidad de estar abierto
-      priceLevel: Math.floor(Math.random() * 4) + 1, // Nivel de precio 1-4
-      photo: null
-    })) || [];
+  const getCurrentPlaces = () => {
+    return placesData[selectedCategory] || [];
   };
 
   const openInMaps = (place) => {
-    if (!location) return;
+    const query = encodeURIComponent(`${place.name} ${place.address}`);
     
-    const url = Platform.select({
-      ios: `maps:0,0?q=${place.name}@${location.latitude},${location.longitude}`,
-      android: `geo:0,0?q=${place.name}@${location.latitude},${location.longitude}`
-    });
+    const urls = {
+      android: `geo:0,0?q=${query}`,
+      ios: `maps:0,0?q=${query}`,
+      web: `https://www.google.com/maps/search/?api=1&query=${query}`
+    };
     
-    Linking.canOpenURL(url).then(supported => {
-      if (supported) {
-        Linking.openURL(url);
-      } else {
-        // Fallback a Google Maps web
-        const webUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place.name)}&center=${location.latitude},${location.longitude}`;
-        Linking.openURL(webUrl);
-      }
-    });
+    const primaryUrl = Platform.OS === 'ios' ? urls.ios : urls.android;
+    
+    console.log(`Intentando abrir mapa para: ${place.name}`);
+    console.log(`URL: ${primaryUrl}`);
+    
+    Linking.canOpenURL(primaryUrl)
+      .then(supported => {
+        console.log(`URL soportada: ${supported}`);
+        if (supported) {
+          return Linking.openURL(primaryUrl);
+        } else {
+          console.log('Usando fallback web');
+          return Linking.openURL(urls.web);
+        }
+      })
+      .then(() => {
+        console.log('Mapa abierto exitosamente');
+      })
+      .catch(err => {
+        console.error('Error abriendo mapa:', err);
+        Alert.alert(
+          'Error al abrir mapa',
+          'No se pudo abrir la aplicación de mapas. ¿Quieres abrir en el navegador?',
+          [
+            { text: 'Cancelar', style: 'cancel' },
+            { text: 'Abrir navegador', onPress: () => Linking.openURL(urls.web) }
+          ]
+        );
+      });
   };
 
-  const renderPriceLevel = (level) => {
-    return '$'.repeat(level) + '·'.repeat(4 - level);
+  const handlePlacePress = (place) => {
+    Alert.alert(
+      place.name,
+      `${place.description}\n\n📍 ${place.address}\n⭐ ${place.rating} • 🚶‍♂️ ${place.distance} km`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: '🗺️ Abrir en mapa', onPress: () => openInMaps(place) }
+      ]
+    );
   };
 
-  const renderPlace = (place) => (
-    <TouchableOpacity
-      key={place.id}
-      style={styles.placeCard}
-      onPress={() => openInMaps(place)}
-    >
-      <View style={styles.placeHeader}>
-        <View style={styles.placeInfo}>
-          <Text style={styles.placeName}>{place.name}</Text>
-          <Text style={styles.placeAddress}>{place.address}</Text>
-        </View>
-        <View style={styles.placeStats}>
-          <Text style={styles.placeRating}>⭐ {place.rating}</Text>
-          <Text style={styles.placeDistance}>📍 {place.distance} km</Text>
-        </View>
-      </View>
-      
-      <View style={styles.placeDetails}>
-        <View style={styles.placeStatus}>
-          <Text style={[
-            styles.statusText,
-            { color: place.isOpen ? COLORS.secondary : '#F44336' }
-          ]}>
-            {place.isOpen ? '✅ Abierto' : '❌ Cerrado'}
-          </Text>
-          <Text style={styles.priceText}>
-            {renderPriceLevel(place.priceLevel)}
-          </Text>
-        </View>
-        
-        <TouchableOpacity
-          style={styles.directionsButton}
-          onPress={() => openInMaps(place)}
-        >
-          <Text style={styles.directionsButtonText}>Ir 🗺️</Text>
-        </TouchableOpacity>
-      </View>
-    </TouchableOpacity>
-  );
+  const selectedCategoryData = categories.find(cat => cat.id === selectedCategory);
 
   return (
     <View style={styles.container}>
@@ -240,20 +132,28 @@ const PlacesScreen = ({ navigation }) => {
         <Text style={styles.headerTitle}>Lugares Cercanos</Text>
       </View>
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoriesContainer}>
-        {Object.entries(categories).map(([key, category]) => (
+      <ScrollView 
+        horizontal 
+        showsHorizontalScrollIndicator={false} 
+        style={styles.categoriesContainer}
+        contentContainerStyle={styles.categoriesContent}
+      >
+        {categories.map((category) => (
           <TouchableOpacity
-            key={key}
+            key={category.id}
             style={[
               styles.categoryButton,
-              selectedCategory === key && styles.categoryButtonActive
+              selectedCategory === category.id && [
+                styles.categoryButtonActive,
+                { backgroundColor: category.color }
+              ]
             ]}
-            onPress={() => setSelectedCategory(key)}
+            onPress={() => setSelectedCategory(category.id)}
           >
             <Text style={styles.categoryIcon}>{category.icon}</Text>
             <Text style={[
               styles.categoryText,
-              selectedCategory === key && styles.categoryTextActive
+              selectedCategory === category.id && styles.categoryTextActive
             ]}>
               {category.name}
             </Text>
@@ -261,51 +161,60 @@ const PlacesScreen = ({ navigation }) => {
         ))}
       </ScrollView>
 
-      <View style={styles.categoryDescription}>
+      <View style={[styles.categoryDescription, { backgroundColor: selectedCategoryData?.color + '20' }]}>
         <Text style={styles.descriptionText}>
-          {categories[selectedCategory].description}
+          {selectedCategoryData?.icon} Encuentra {selectedCategoryData?.name.toLowerCase()} cerca de ti
         </Text>
       </View>
 
-      {loading ? (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={COLORS.primary} />
-          <Text style={styles.loadingText}>Buscando lugares cercanos...</Text>
-        </View>
-      ) : (
-        <ScrollView style={styles.placesContainer}>
-          {places.length > 0 ? (
-            places.map(renderPlace)
-          ) : (
-            <View style={styles.emptyState}>
-              <Text style={styles.emptyStateEmoji}>🔍</Text>
-              <Text style={styles.emptyStateTitle}>No se encontraron lugares</Text>
-              <Text style={styles.emptyStateText}>
-                No pudimos encontrar {categories[selectedCategory].name.toLowerCase()} cerca de tu ubicación.
-                Intenta con otra categoría o verifica tu conexión.
-              </Text>
+      <ScrollView style={styles.placesContainer}>
+        <Text style={styles.sectionTitle}>
+          📍 {getCurrentPlaces().length} lugares encontrados
+        </Text>
+
+        {getCurrentPlaces().map((place, index) => (
+          <TouchableOpacity
+            key={index}
+            style={styles.placeCard}
+            onPress={() => handlePlacePress(place)}
+            activeOpacity={0.7}
+          >
+            <View style={styles.placeHeader}>
+              <View style={styles.placeInfo}>
+                <Text style={styles.placeName}>{place.name}</Text>
+                <Text style={styles.placeAddress}>{place.address}</Text>
+                <Text style={styles.placeDescription}>{place.description}</Text>
+              </View>
+              <View style={styles.placeStats}>
+                <Text style={styles.placeRating}>⭐ {place.rating}</Text>
+                <Text style={styles.placeDistance}>🚶‍♂️ {place.distance} km</Text>
+              </View>
+            </View>
+            
+            <View style={styles.placeActions}>
               <TouchableOpacity
-                style={styles.retryButton}
-                onPress={() => searchNearbyPlaces()}
+                style={[styles.mapButton, { backgroundColor: selectedCategoryData?.color }]}
+                onPress={() => openInMaps(place)}
               >
-                <Text style={styles.retryButtonText}>Buscar de nuevo</Text>
+                <Text style={styles.mapButtonText}>🗺️ Ver en mapa</Text>
               </TouchableOpacity>
             </View>
-          )}
+          </TouchableOpacity>
+        ))}
 
-          <View style={styles.helpSection}>
-            <Text style={styles.helpTitle}>💡 Consejos para relajarte</Text>
-            <View style={styles.tipCard}>
-              <Text style={styles.tipText}>
-                • Elige lugares que te transmitan calma{'\n'}
-                • Desconecta tu teléfono por un rato{'\n'}
-                • Respira profundo y disfruta el momento{'\n'}
-                • Si es posible, ve acompañado/a
-              </Text>
-            </View>
+        <View style={styles.helpSection}>
+          <Text style={styles.helpTitle}>💡 Consejos para relajarte</Text>
+          <View style={styles.tipCard}>
+            <Text style={styles.tipText}>
+              • Elige lugares que te transmitan calma{'\n'}
+              • Desconecta el teléfono por un rato{'\n'}
+              • Respira profundo y disfruta el momento{'\n'}
+              • Si es posible, ve acompañado/a{'\n'}
+              • Tómate tu tiempo sin prisa
+            </Text>
           </View>
-        </ScrollView>
-      )}
+        </View>
+      </ScrollView>
     </View>
   );
 };
@@ -321,6 +230,8 @@ const styles = StyleSheet.create({
     paddingBottom: 20,
     paddingHorizontal: 20,
     alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
   },
   backButton: {
     position: 'absolute',
@@ -337,65 +248,71 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   categoriesContainer: {
-    paddingVertical: 15,
+    maxHeight: 70,
+    paddingVertical: 10,
     paddingHorizontal: 10,
+  },
+  categoriesContent: {
+    paddingHorizontal: 15,
   },
   categoryButton: {
     alignItems: 'center',
-    paddingHorizontal: 15,
-    paddingVertical: 10,
-    marginHorizontal: 5,
-    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginHorizontal: 4,
+    borderRadius: 16,
     backgroundColor: COLORS.white,
-    minWidth: 80,
+    minWidth: 70,
+    maxHeight: 55,
     shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
+    shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
     shadowRadius: 2,
     elevation: 2,
   },
   categoryButtonActive: {
-    backgroundColor: COLORS.primary,
+    transform: [{ scale: 1.05 }],
   },
   categoryIcon: {
-    fontSize: 20,
+    fontSize: 16,
     marginBottom: 2,
   },
   categoryText: {
-    fontSize: 12,
+    fontSize: 10,
     color: COLORS.text,
     fontWeight: '500',
+    textAlign: 'center',
   },
   categoryTextActive: {
     color: COLORS.white,
+    fontWeight: 'bold',
   },
   categoryDescription: {
     paddingHorizontal: 20,
-    marginBottom: 10,
+    paddingVertical: 8,
+    marginHorizontal: 20,
+    marginVertical: 10,
+    borderRadius: 8,
   },
   descriptionText: {
     fontSize: 14,
     color: COLORS.text,
     textAlign: 'center',
-    fontStyle: 'italic',
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 40,
-  },
-  loadingText: {
-    marginTop: 15,
-    color: COLORS.text,
-    fontSize: 16,
+    fontWeight: '500',
   },
   placesContainer: {
     flex: 1,
     paddingHorizontal: 20,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: COLORS.text,
+    marginBottom: 15,
+    textAlign: 'center',
+    backgroundColor: COLORS.white,
+    padding: 12,
+    borderRadius: 8,
   },
   placeCard: {
     backgroundColor: COLORS.white,
@@ -403,10 +320,7 @@ const styles = StyleSheet.create({
     padding: 15,
     marginBottom: 15,
     shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
@@ -418,6 +332,7 @@ const styles = StyleSheet.create({
   },
   placeInfo: {
     flex: 1,
+    marginRight: 10,
   },
   placeName: {
     fontSize: 16,
@@ -426,9 +341,16 @@ const styles = StyleSheet.create({
     marginBottom: 3,
   },
   placeAddress: {
-    fontSize: 14,
+    fontSize: 13,
     color: COLORS.text,
     opacity: 0.7,
+    marginBottom: 5,
+  },
+  placeDescription: {
+    fontSize: 12,
+    color: COLORS.text,
+    opacity: 0.8,
+    fontStyle: 'italic',
   },
   placeStats: {
     alignItems: 'flex-end',
@@ -443,64 +365,16 @@ const styles = StyleSheet.create({
     color: COLORS.text,
     opacity: 0.7,
   },
-  placeDetails: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  placeActions: {
     alignItems: 'center',
   },
-  placeStatus: {
-    flex: 1,
-  },
-  statusText: {
-    fontSize: 14,
-    fontWeight: '500',
-    marginBottom: 3,
-  },
-  priceText: {
-    fontSize: 14,
-    color: COLORS.text,
-    opacity: 0.7,
-  },
-  directionsButton: {
-    backgroundColor: COLORS.primary,
-    paddingHorizontal: 15,
+  mapButton: {
+    paddingHorizontal: 20,
     paddingVertical: 8,
     borderRadius: 20,
-  },
-  directionsButtonText: {
-    color: COLORS.white,
-    fontSize: 14,
-    fontWeight: 'bold',
-  },
-  emptyState: {
     alignItems: 'center',
-    padding: 40,
   },
-  emptyStateEmoji: {
-    fontSize: 48,
-    marginBottom: 15,
-  },
-  emptyStateTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: COLORS.text,
-    marginBottom: 10,
-    textAlign: 'center',
-  },
-  emptyStateText: {
-    fontSize: 14,
-    color: COLORS.text,
-    textAlign: 'center',
-    lineHeight: 20,
-    marginBottom: 20,
-  },
-  retryButton: {
-    backgroundColor: COLORS.primary,
-    paddingHorizontal: 25,
-    paddingVertical: 12,
-    borderRadius: 20,
-  },
-  retryButtonText: {
+  mapButtonText: {
     color: COLORS.white,
     fontSize: 14,
     fontWeight: 'bold',

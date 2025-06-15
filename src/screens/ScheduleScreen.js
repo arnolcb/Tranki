@@ -8,7 +8,8 @@ import {
   TouchableOpacity,
   TextInput,
   Alert,
-  Modal
+  Modal,
+  ActivityIndicator 
 } from 'react-native';
 import auth from '@react-native-firebase/auth';
 import { COLORS } from '../constants/colors';
@@ -332,4 +333,291 @@ const ScheduleScreen = ({ navigation }) => {
   );
 };
 
+// Agregar al final de src/screens/ScheduleScreen.js, ANTES de export default ScheduleScreen;
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#F8F9FA',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#F8F9FA',
+  },
+  loadingText: {
+    marginTop: 15,
+    color: '#333333',
+    fontSize: 16,
+  },
+  header: {
+    backgroundColor: '#4A90E2',
+    paddingTop: 50,
+    paddingBottom: 20,
+    paddingHorizontal: 20,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  headerTitle: {
+    color: '#FFFFFF',
+    fontSize: 20,
+    fontWeight: 'bold',
+    flex: 1,
+    textAlign: 'center',
+  },
+  saveButton: {
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 15,
+    paddingVertical: 8,
+    borderRadius: 15,
+  },
+  saveButtonText: {
+    color: '#4A90E2',
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  content: {
+    flex: 1,
+    padding: 20,
+  },
+  dayContainer: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 15,
+    marginBottom: 15,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  dayHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 15,
+  },
+  dayTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333333',
+  },
+  addButton: {
+    backgroundColor: '#4A90E2',
+    paddingHorizontal: 15,
+    paddingVertical: 8,
+    borderRadius: 15,
+  },
+  addButtonText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  sectionTitle: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#333333',
+    marginBottom: 10,
+    marginTop: 10,
+  },
+  emptyDay: {
+    alignItems: 'center',
+    padding: 20,
+  },
+  emptyDayText: {
+    color: '#333333',
+    opacity: 0.6,
+    fontStyle: 'italic',
+  },
+  eventCard: {
+    backgroundColor: '#F8F9FA',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 8,
+    borderLeftWidth: 4,
+  },
+  eventHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  eventIcon: {
+    fontSize: 20,
+    marginRight: 10,
+  },
+  eventInfo: {
+    flex: 1,
+  },
+  eventTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#333333',
+  },
+  eventTime: {
+    fontSize: 14,
+    color: '#333333',
+    opacity: 0.7,
+  },
+  deleteButton: {
+    padding: 5,
+  },
+  deleteButtonText: {
+    color: '#F44336',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  freeTimeCard: {
+    backgroundColor: '#E8F5E8',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  freeTimeIcon: {
+    fontSize: 20,
+    marginRight: 10,
+  },
+  freeTimeInfo: {
+    flex: 1,
+  },
+  freeTimeText: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#2E7D2E',
+  },
+  freeTimeHours: {
+    fontSize: 12,
+    color: '#2E7D2E',
+    opacity: 0.8,
+  },
+  suggestion: {
+    fontSize: 12,
+    color: '#2E7D2E',
+    fontStyle: 'italic',
+    marginTop: 2,
+  },
+  modalContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  modalContent: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 20,
+    width: '90%',
+    maxWidth: 400,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333333',
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 15,
+    fontSize: 16,
+  },
+  inputLabel: {
+    fontSize: 14,
+    color: '#333333',
+    marginBottom: 5,
+    fontWeight: '500',
+  },
+  typeSelector: {
+    marginBottom: 15,
+  },
+  typeButtons: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+  },
+  typeButton: {
+    alignItems: 'center',
+    padding: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    width: '48%',
+    marginBottom: 8,
+  },
+  typeButtonIcon: {
+    fontSize: 20,
+    marginBottom: 4,
+  },
+  typeButtonText: {
+    fontSize: 12,
+    color: '#333333',
+  },
+  timeInputs: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  timeInput: {
+    width: '48%',
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 20,
+  },
+  cancelButton: {
+    backgroundColor: '#E0E0E0',
+    paddingHorizontal: 25,
+    paddingVertical: 12,
+    borderRadius: 20,
+    flex: 1,
+    marginRight: 10,
+    alignItems: 'center',
+  },
+  cancelButtonText: {
+    color: '#333333',
+    fontWeight: 'bold',
+  },
+  confirmButton: {
+    backgroundColor: '#4A90E2',
+    paddingHorizontal: 25,
+    paddingVertical: 12,
+    borderRadius: 20,
+    flex: 1,
+    marginLeft: 10,
+    alignItems: 'center',
+  },
+  confirmButtonText: {
+    color: '#FFFFFF',
+    fontWeight: 'bold',
+  },
+  tipsContainer: {
+    marginTop: 20,
+    marginBottom: 30,
+  },
+  tipsTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#333333',
+    marginBottom: 10,
+  },
+  tipCard: {
+    backgroundColor: '#FFFFFF',
+    padding: 15,
+    borderRadius: 12,
+    borderLeftWidth: 4,
+    borderLeftColor: '#7ED321',
+  },
+  tipText: {
+    fontSize: 14,
+    color: '#333333',
+    lineHeight: 20,
+  },
+});
+
 export default ScheduleScreen;
+

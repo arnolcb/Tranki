@@ -12,6 +12,7 @@ import {
 import auth from '@react-native-firebase/auth';
 import { EMOTIONS } from '../constants/emotions';
 import { COLORS } from '../constants/colors';
+import { formatDate } from '../utils/dateUtils';
 import FirebaseService from '../services/firebase';
 
 const { width } = Dimensions.get('window');
@@ -38,22 +39,29 @@ const EmotionSelectorScreen = ({ navigation }) => {
     checkTodayEmotion(currentUser?.uid);
   }, []);
 
-  const checkTodayEmotion = async (userId) => {
-    if (!userId) return;
+const checkTodayEmotion = async (userId) => {
+  if (!userId) return;
+  
+  try {
+    // Obtener emociones recientes
+    const history = await FirebaseService.getEmotionHistory(userId, 7); // Solo 7 días
+    const today = formatDate(new Date());
     
-    try {
-      const history = await FirebaseService.getEmotionHistory(userId, 1);
-      const today = new Date().toISOString().split('T')[0];
-      const todayRecord = history.find(record => record.date === today);
-      
-      if (todayRecord) {
-        const emotion = Object.values(EMOTIONS).find(e => e.id === todayRecord.emotion);
-        setTodayEmotion(emotion);
-      }
-    } catch (error) {
-      console.error('Error checking today emotion:', error);
+    console.log('Checking emotions for today:', today);
+    console.log('Retrieved history:', history);
+    
+    const todayRecord = history.find(record => record.date === today);
+    
+    if (todayRecord) {
+      const emotion = Object.values(EMOTIONS).find(e => e.id === todayRecord.emotion);
+      console.log('Found today emotion:', emotion);
+      setTodayEmotion(emotion);
     }
-  };
+  } catch (error) {
+    console.error('Error checking today emotion:', error);
+    // No mostrar error al usuario, solo log
+  }
+};
 
   const handleEmotionSelect = (emotion) => {
     setSelectedEmotion(emotion);
