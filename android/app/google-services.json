@@ -12,7 +12,20 @@
           "package_name": "com.trankiapp"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "706955664281-iubpjiqq712je86vf7n1k154998mb1ou.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.trankiapp",
+            "certificate_hash": "4697afdeda275e3f90e6fb58fa98c85b11f94830"
+          }
+        },
+        {
+          "client_id": "706955664281-h31b0bgrl5t8cajnm7rp98l982kmjdp0.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyBpMxOBAcI11IqEDTlLQcvytUXNJ-1s9bs"
@@ -20,7 +33,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "706955664281-h31b0bgrl5t8cajnm7rp98l982kmjdp0.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }

@@ -1,5 +1,4 @@
-
-// src/screens/ProfileScreen.js
+// src/screens/ProfileScreen.js - FUNCIONES SOCIALES FUNCIONANDO
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -7,49 +6,131 @@ import {
   StyleSheet,
   TouchableOpacity,
   Alert,
-  ScrollView
+  ScrollView,
+  SafeAreaView,
+  StatusBar,
+  Platform,
 } from 'react-native';
 import auth from '@react-native-firebase/auth';
-import firestore from '@react-native-firebase/firestore';
-import { COLORS } from '../constants/colors';
+import { COLORS, Theme, getEmotionColor, getEmotionIcon } from '../constants/colors';
+import CustomIcons from '../components/CustomIcons';
+import AvatarPicker from '../components/AvatarPicker';
+import FirebaseService from '../services/firebase';
+import SocialService from '../services/SocialService';
 
 const ProfileScreen = ({ navigation }) => {
   const [user, setUser] = useState(null);
   const [userData, setUserData] = useState(null);
   const [stats, setStats] = useState({ totalDays: 0, avgMood: 0, streak: 0 });
+  const [socialStats, setSocialStats] = useState({ friendsCount: 0, sharedStatesCount: 0, receivedLikesCount: 0 });
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    StatusBar.setBarStyle('dark-content');
+    StatusBar.setBackgroundColor(COLORS.white);
+    
     const currentUser = auth().currentUser;
     setUser(currentUser);
     if (currentUser) {
       loadUserData(currentUser.uid);
       loadUserStats(currentUser.uid);
+      loadSocialStats(currentUser.uid);
     }
   }, []);
 
   const loadUserData = async (userId) => {
     try {
-      const doc = await firestore().collection('users').doc(userId).get();
-      if (doc.exists) {
-        setUserData(doc.data());
-      }
+      const profile = await FirebaseService.getUserProfile(userId);
+      setUserData(profile);
     } catch (error) {
       console.error('Error loading user data:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
   const loadUserStats = async (userId) => {
-    // Simular estadísticas (en producción calcular desde Firebase)
-    setStats({
-      totalDays: Math.floor(Math.random() * 30) + 5,
-      avgMood: (Math.random() * 1.5 + 1.5).toFixed(1),
-      streak: Math.floor(Math.random() * 7) + 1
-    });
+    try {
+      const [history, insights] = await Promise.all([
+        FirebaseService.getEmotionHistory(userId, 30),
+        FirebaseService.getEmotionInsights(userId, 7)
+      ]);
+
+      const totalDays = history.length;
+      const avgMood = history.length > 0 
+        ? (history.reduce((sum, record) => sum + record.value, 0) / history.length)
+        : 0;
+
+      // Calcular racha actual
+      const sortedHistory = history.sort((a, b) => new Date(b.date) - new Date(a.date));
+      let streak = 0;
+      const today = new Date();
+      
+      for (let i = 0; i < sortedHistory.length; i++) {
+        const recordDate = new Date(sortedHistory[i].date);
+        const expectedDate = new Date(today);
+        expectedDate.setDate(today.getDate() - i);
+        
+        if (recordDate.toDateString() === expectedDate.toDateString()) {
+          streak++;
+        } else {
+          break;
+        }
+      }
+
+      setStats({
+        totalDays,
+        avgMood: avgMood.toFixed(1),
+        streak,
+        insights
+      });
+    } catch (error) {
+      console.error('Error loading user stats:', error);
+      setStats({
+        totalDays: 0,
+        avgMood: 0,
+        streak: 0
+      });
+    }
+  };
+
+  const loadSocialStats = async (userId) => {
+    try {
+      const socialData = await SocialService.getUserSocialStats(userId);
+      setSocialStats(socialData);
+    } catch (error) {
+      console.error('Error loading social stats:', error);
+    }
+  };
+
+  // Manejar actualización de foto de perfil
+  const handleImageUpdate = async (imageData) => {
+    try {
+      if (!user?.uid) return;
+
+      // Actualizar en Firestore
+      await SocialService.updateProfilePicture(user.uid, imageData);
+      
+      // Actualizar estado local
+      setUserData(prev => ({
+        ...prev,
+        profilePicture: imageData
+      }));
+      
+      console.log('✅ Foto de perfil actualizada en el estado');
+    } catch (error) {
+      console.error('Error actualizando foto en Firestore:', error);
+      Alert.alert(
+        '⚠️ Advertencia',
+        'La foto se subió pero hubo un problema actualizando tu perfil. Intenta reiniciar la app.',
+        [{ text: 'Entendido' }]
+      );
+    }
   };
 
   const handleSignOut = () => {
     Alert.alert(
-      'Cerrar sesión',
+      '🚪 Cerrar sesión',
       '¿Estás seguro que quieres cerrar sesión?',
       [
         { text: 'Cancelar', style: 'cancel' },
@@ -62,515 +143,1011 @@ const ProfileScreen = ({ navigation }) => {
     );
   };
 
+  const handleExportData = async () => {
+    try {
+      Alert.alert(
+        '📤 Exportar datos',
+        'Preparando tus datos para exportar...',
+        [{ text: 'Entendido' }]
+      );
+      
+      const exportData = await FirebaseService.exportUserData(user.uid);
+      console.log('Data exported:', exportData);
+      
+      Alert.alert(
+        '✅ Datos preparados',
+        'Tus datos han sido preparados. Esta función se completará pronto.',
+        [{ text: 'OK' }]
+      );
+    } catch (error) {
+      Alert.alert('❌ Error', 'No se pudieron exportar los datos');
+    }
+  };
+
+  // ========== FUNCIONES SOCIALES FUNCIONANDO ==========
+  
+  const handleFriendsScreen = () => {
+    navigation.navigate('Friends');
+  };
+
+  const handleSocialFeed = () => {
+    navigation.navigate('SocialFeed');
+  };
+
+  const handleAddFriend = () => {
+    Alert.alert(
+      '👥 Agregar amigo',
+      'Ingresa el email del amigo que quieres agregar:',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Buscar',
+          onPress: () => {
+            // Por ahora navegamos a la pantalla de buscar amigos
+            navigation.navigate('SearchFriends');
+          }
+        }
+      ]
+    );
+  };
+
+  const handleShareEmotion = async () => {
+    try {
+      // Obtener la emoción más reciente del usuario
+      const today = new Date().toISOString().split('T')[0];
+      const todayEmotions = await FirebaseService.getTodayEmotions(user.uid, today);
+      
+      if (todayEmotions.length === 0) {
+        Alert.alert(
+          '📱 Compartir estado',
+          'Primero registra tu estado emocional del día para poder compartirlo.',
+          [
+            { text: 'Cancelar', style: 'cancel' },
+            { text: 'Registrar estado', onPress: () => navigation.navigate('EmotionSelector') }
+          ]
+        );
+        return;
+      }
+
+      const latestEmotion = todayEmotions[todayEmotions.length - 1];
+      
+      Alert.alert(
+        '📱 Compartir estado emocional',
+        `¿Quieres compartir que te sientes ${latestEmotion.emotion} con tus amigos?`,
+        [
+          { text: 'Cancelar', style: 'cancel' },
+          {
+            text: 'Compartir',
+            onPress: async () => {
+              try {
+                await SocialService.shareEmotionalState(user.uid, {
+                  emotion: latestEmotion.emotion,
+                  value: latestEmotion.value,
+                  message: `Me siento ${latestEmotion.emotion} hoy 😊`
+                });
+                
+                Alert.alert('✅ Compartido', 'Tu estado emocional ha sido compartido con tus amigos');
+                
+                // Recargar estadísticas sociales
+                loadSocialStats(user.uid);
+              } catch (error) {
+                Alert.alert('❌ Error', 'No se pudo compartir tu estado');
+              }
+            }
+          }
+        ]
+      );
+    } catch (error) {
+      Alert.alert('❌ Error', 'No se pudo obtener tu estado emocional');
+    }
+  };
+
+  const handleActionPress = (action, title) => {
+    const actions = {
+      notifications: () => Alert.alert('🔔 Notificaciones', 'Configuración de notificaciones próximamente disponible'),
+      goals: () => Alert.alert('🎯 Metas', 'Función de metas personales próximamente disponible'),
+      export: handleExportData,
+      help: () => Alert.alert('❓ Ayuda', 'Centro de ayuda próximamente disponible'),
+      privacy: () => Alert.alert('🔒 Privacidad', 'Configuración de privacidad próximamente disponible'),
+      theme: () => Alert.alert('🎨 Tema', 'Configuración de tema próximamente disponible'),
+      
+      // FUNCIONES SOCIALES QUE SÍ FUNCIONAN
+      friends: handleFriendsScreen,
+      social: handleSocialFeed,
+      addFriend: handleAddFriend,
+      shareEmotion: handleShareEmotion,
+    };
+
+    const actionFunction = actions[action];
+    if (actionFunction) {
+      actionFunction();
+    } else {
+      Alert.alert(title, `Función ${title.toLowerCase()} próximamente disponible`);
+    }
+  };
+
+  const getMoodIcon = (avgMood) => {
+    const mood = parseFloat(avgMood);
+    if (mood >= 2.5) return '😊';
+    if (mood >= 2.0) return '😐';
+    return '😰';
+  };
+
+  const getMoodColor = (avgMood) => {
+    const mood = parseFloat(avgMood);
+    if (mood >= 2.5) return COLORS.success;
+    if (mood >= 2.0) return COLORS.warning;
+    return COLORS.error;
+  };
+
+  const getStreakMessage = () => {
+    if (stats.streak === 0) return 'Empieza tu racha hoy';
+    if (stats.streak === 1) return '¡Buen comienzo!';
+    if (stats.streak <= 7) return '¡Vas muy bien!';
+    if (stats.streak <= 30) return '¡Increíble constancia!';
+    return '¡Eres un campeón!';
+  };
+
+  // Preparar datos del usuario para el AvatarPicker
+  const userForAvatar = {
+    id: user?.uid,
+    name: userData?.name || user?.displayName || 'Usuario',
+    email: user?.email,
+    role: userData?.role,
+    profilePicture: userData?.profilePicture,
+    isOnline: true,
+    isVerified: userData?.isVerified || false
+  };
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.loadingContainer}>
+        <View style={styles.loadingContent}>
+          <CustomIcons.User size={48} color={COLORS.primary} />
+          <Text style={styles.loadingText}>Cargando perfil...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
-    <ScrollView style={styles.container}>
+    <SafeAreaView style={styles.container}>
+      {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Mi Perfil</Text>
-      </View>
-
-      <View style={styles.profileSection}>
-        <View style={styles.avatarContainer}>
-          <Text style={styles.avatar}>👤</Text>
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => navigation.goBack()}
+          activeOpacity={0.7}
+        >
+          <CustomIcons.ArrowLeft size={20} color={COLORS.text} />
+        </TouchableOpacity>
+        <View style={styles.headerInfo}>
+          <Text style={styles.headerTitle}>Mi Perfil</Text>
+          <Text style={styles.headerSubtitle}>Información personal y estadísticas</Text>
         </View>
-        <Text style={styles.userName}>{userData?.name || 'Usuario'}</Text>
-        <Text style={styles.userEmail}>{user?.email}</Text>
-        <Text style={styles.userRole}>
-          {userData?.role === 'ambos' ? 'Estudiante y Trabajador' : 
-           userData?.role === 'estudiante' ? 'Estudiante' : 'Trabajador'}
-        </Text>
+        <TouchableOpacity 
+          style={styles.headerAction}
+          onPress={() => handleActionPress('export', 'Exportar datos')}
+        >
+          <CustomIcons.Download size={18} color={COLORS.textMuted} />
+        </TouchableOpacity>
       </View>
 
-      <View style={styles.statsSection}>
-        <Text style={styles.sectionTitle}>📊 Mis estadísticas</Text>
-        
-        <View style={styles.statsGrid}>
-          <View style={styles.statCard}>
-            <Text style={styles.statNumber}>{stats.totalDays}</Text>
-            <Text style={styles.statLabel}>Días registrados</Text>
+      <ScrollView showsVerticalScrollIndicator={false}>
+        {/* Perfil principal con foto de perfil */}
+        <View style={styles.profileSection}>
+          <View style={styles.profileCard}>
+            <AvatarPicker
+              user={userForAvatar}
+              onImageUpdate={handleImageUpdate}
+              size={120}
+              editable={true}
+              showName={true}
+            />
+
+            {/* Badges de logros */}
+            <View style={styles.badgesSection}>
+              {stats.streak >= 7 && (
+                <View style={[styles.badge, { backgroundColor: COLORS.successSoft }]}>
+                  <Text style={styles.badgeEmoji}>🔥</Text>
+                  <Text style={[styles.badgeText, { color: COLORS.success }]}>Constante</Text>
+                </View>
+              )}
+              
+              {stats.totalDays >= 30 && (
+                <View style={[styles.badge, { backgroundColor: COLORS.blue50 }]}>
+                  <Text style={styles.badgeEmoji}>⭐</Text>
+                  <Text style={[styles.badgeText, { color: COLORS.primary }]}>Veterano</Text>
+                </View>
+              )}
+              
+              {parseFloat(stats.avgMood) >= 2.5 && (
+                <View style={[styles.badge, { backgroundColor: COLORS.warningSoft }]}>
+                  <Text style={styles.badgeEmoji}>😊</Text>
+                  <Text style={[styles.badgeText, { color: COLORS.warning }]}>Positivo</Text>
+                </View>
+              )}
+
+              {socialStats.friendsCount >= 5 && (
+                <View style={[styles.badge, { backgroundColor: COLORS.errorSoft }]}>
+                  <Text style={styles.badgeEmoji}>👥</Text>
+                  <Text style={[styles.badgeText, { color: COLORS.error }]}>Social</Text>
+                </View>
+              )}
+            </View>
+          </View>
+        </View>
+
+        {/* Estadísticas mejoradas con datos sociales */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>📊 Estadísticas</Text>
+            <TouchableOpacity
+              style={styles.viewMoreButton}
+              onPress={() => navigation.navigate('History')}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.viewMoreText}>Ver más</Text>
+            </TouchableOpacity>
           </View>
           
-          <View style={styles.statCard}>
-            <Text style={styles.statNumber}>{stats.avgMood}</Text>
-            <Text style={styles.statLabel}>Estado promedio</Text>
+          <View style={styles.statsGrid}>
+            <View style={styles.statCard}>
+              <View style={styles.statIconContainer}>
+                <Text style={styles.statIcon}>📅</Text>
+              </View>
+              <Text style={styles.statNumber}>{stats.totalDays}</Text>
+              <Text style={styles.statLabel}>Días registrados</Text>
+            </View>
+            
+            <View style={styles.statCard}>
+              <View style={[styles.statIconContainer, { backgroundColor: getMoodColor(stats.avgMood) + '20' }]}>
+                <Text style={styles.statIcon}>{getMoodIcon(stats.avgMood)}</Text>
+              </View>
+              <Text style={[styles.statNumber, { color: getMoodColor(stats.avgMood) }]}>
+                {stats.avgMood}
+              </Text>
+              <Text style={styles.statLabel}>Estado promedio</Text>
+            </View>
+            
+            <View style={styles.statCard}>
+              <View style={[styles.statIconContainer, { backgroundColor: COLORS.warning + '20' }]}>
+                <Text style={styles.statIcon}>🔥</Text>
+              </View>
+              <Text style={[styles.statNumber, { color: COLORS.warning }]}>
+                {stats.streak}
+              </Text>
+              <Text style={styles.statLabel}>Racha actual</Text>
+            </View>
           </View>
-          
-          <View style={styles.statCard}>
-            <Text style={styles.statNumber}>{stats.streak}</Text>
-            <Text style={styles.statLabel}>Racha actual</Text>
+
+          {/* Estadísticas sociales */}
+          <View style={styles.socialStatsGrid}>
+            <View style={styles.socialStatCard}>
+              <Text style={styles.socialStatNumber}>{socialStats.friendsCount}</Text>
+              <Text style={styles.socialStatLabel}>Amigos</Text>
+            </View>
+            <View style={styles.socialStatCard}>
+              <Text style={styles.socialStatNumber}>{socialStats.sharedStatesCount}</Text>
+              <Text style={styles.socialStatLabel}>Estados compartidos</Text>
+            </View>
+            <View style={styles.socialStatCard}>
+              <Text style={styles.socialStatNumber}>{socialStats.receivedLikesCount}</Text>
+              <Text style={styles.socialStatLabel}>Likes recibidos</Text>
+            </View>
+          </View>
+
+          {/* Mensaje motivacional */}
+          <View style={styles.motivationCard}>
+            <Text style={styles.motivationText}>{getStreakMessage()}</Text>
+            {stats.insights?.overallTrend && (
+              <Text style={styles.trendText}>
+                Tendencia: {stats.insights.overallTrend === 'improving' ? '📈 Mejorando' : 
+                          stats.insights.overallTrend === 'declining' ? '📉 Cuidándote' : '➡️ Estable'}
+              </Text>
+            )}
           </View>
         </View>
-      </View>
 
-      <View style={styles.actionsSection}>
-        <TouchableOpacity style={styles.actionButton}>
-          <Text style={styles.actionIcon}>📱</Text>
-          <Text style={styles.actionText}>Notificaciones</Text>
-          <Text style={styles.actionArrow}>→</Text>
-        </TouchableOpacity>
+        {/* Navegación rápida actualizada con funciones sociales */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>🚀 Navegación rápida</Text>
+          
+          <View style={styles.quickNavGrid}>
+            <TouchableOpacity
+              style={styles.quickNavItem}
+              onPress={() => navigation.navigate('Chat', { emotion: { id: 'neutral', label: 'Neutral' } })}
+              activeOpacity={0.8}
+            >
+              <View style={[styles.quickNavIcon, { backgroundColor: COLORS.blue50 }]}>
+                <CustomIcons.Chat size={16} color={COLORS.primary} />
+              </View>
+              <Text style={styles.quickNavText}>Chat IA</Text>
+            </TouchableOpacity>
 
-        <TouchableOpacity style={styles.actionButton}>
-          <Text style={styles.actionIcon}>🎯</Text>
-          <Text style={styles.actionText}>Metas personales</Text>
-          <Text style={styles.actionArrow}>→</Text>
-        </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.quickNavItem}
+              onPress={() => handleActionPress('friends', 'Amigos')}
+              activeOpacity={0.8}
+            >
+              <View style={[styles.quickNavIcon, { backgroundColor: COLORS.successSoft }]}>
+                <CustomIcons.User size={16} color={COLORS.success} />
+              </View>
+              <Text style={styles.quickNavText}>Amigos</Text>
+              {socialStats.friendsCount > 0 && (
+                <View style={styles.quickNavBadge}>
+                  <Text style={styles.quickNavBadgeText}>{socialStats.friendsCount}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
 
-        <TouchableOpacity style={styles.actionButton}>
-          <Text style={styles.actionIcon}>📋</Text>
-          <Text style={styles.actionText}>Exportar datos</Text>
-          <Text style={styles.actionArrow}>→</Text>
-        </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.quickNavItem}
+              onPress={() => navigation.navigate('Places')}
+              activeOpacity={0.8}
+            >
+              <View style={[styles.quickNavIcon, { backgroundColor: COLORS.warningSoft }]}>
+                <CustomIcons.MapPin size={16} color={COLORS.warning} />
+              </View>
+              <Text style={styles.quickNavText}>Lugares</Text>
+            </TouchableOpacity>
 
-        <TouchableOpacity style={styles.actionButton}>
-          <Text style={styles.actionIcon}>❓</Text>
-          <Text style={styles.actionText}>Ayuda y soporte</Text>
-          <Text style={styles.actionArrow}>→</Text>
-        </TouchableOpacity>
-      </View>
+            <TouchableOpacity
+              style={styles.quickNavItem}
+              onPress={() => navigation.navigate('History')}
+              activeOpacity={0.8}
+            >
+              <View style={[styles.quickNavIcon, { backgroundColor: COLORS.errorSoft }]}>
+                <CustomIcons.BarChart size={16} color={COLORS.error} />
+              </View>
+              <Text style={styles.quickNavText}>Historial</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
 
-      <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
-        <Text style={styles.signOutButtonText}>Cerrar sesión</Text>
-      </TouchableOpacity>
+        {/* Nueva sección: Funciones sociales FUNCIONANDO */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>👥 Social</Text>
+          
+          <View style={styles.menuContainer}>
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => handleActionPress('friends', 'Mis amigos')}
+              activeOpacity={0.8}
+            >
+              <View style={styles.menuItemLeft}>
+                <View style={[styles.menuIcon, { backgroundColor: COLORS.blue50 }]}>
+                  <CustomIcons.User size={16} color={COLORS.primary} />
+                </View>
+                <View style={styles.menuItemInfo}>
+                  <Text style={styles.menuItemTitle}>Mis amigos</Text>
+                  <Text style={styles.menuItemSubtitle}>
+                    {socialStats.friendsCount} amigos conectados
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.menuItemRight}>
+                {socialStats.friendsCount > 0 && (
+                  <View style={styles.menuBadge}>
+                    <Text style={styles.menuBadgeText}>{socialStats.friendsCount}</Text>
+                  </View>
+                )}
+                <CustomIcons.ChevronRight size={16} color={COLORS.textMuted} />
+              </View>
+            </TouchableOpacity>
 
-      <View style={styles.footer}>
-        <Text style={styles.footerText}>Tranki v1.0.0</Text>
-        <Text style={styles.footerText}>Hecho con 💚 para tu bienestar</Text>
-      </View>
-    </ScrollView>
+            <View style={styles.menuDivider} />
+
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => handleActionPress('social', 'Feed social')}
+              activeOpacity={0.8}
+            >
+              <View style={styles.menuItemLeft}>
+                <View style={[styles.menuIcon, { backgroundColor: COLORS.successSoft }]}>
+                  <CustomIcons.Heart size={16} color={COLORS.success} />
+                </View>
+                <View style={styles.menuItemInfo}>
+                  <Text style={styles.menuItemTitle}>Feed social</Text>
+                  <Text style={styles.menuItemSubtitle}>Estados de tus amigos</Text>
+                </View>
+              </View>
+              <CustomIcons.ChevronRight size={16} color={COLORS.textMuted} />
+            </TouchableOpacity>
+
+            <View style={styles.menuDivider} />
+
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => handleActionPress('shareEmotion', 'Compartir estado')}
+              activeOpacity={0.8}
+            >
+              <View style={styles.menuItemLeft}>
+                <View style={[styles.menuIcon, { backgroundColor: COLORS.warningSoft }]}>
+                  <CustomIcons.Share size={16} color={COLORS.warning} />
+                </View>
+                <View style={styles.menuItemInfo}>
+                  <Text style={styles.menuItemTitle}>Compartir estado</Text>
+                  <Text style={styles.menuItemSubtitle}>
+                    {socialStats.sharedStatesCount} estados compartidos
+                  </Text>
+                </View>
+              </View>
+              <CustomIcons.ChevronRight size={16} color={COLORS.textMuted} />
+            </TouchableOpacity>
+
+            <View style={styles.menuDivider} />
+
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => handleActionPress('addFriend', 'Agregar amigo')}
+              activeOpacity={0.8}
+            >
+              <View style={styles.menuItemLeft}>
+                <View style={[styles.menuIcon, { backgroundColor: COLORS.errorSoft }]}>
+                  <CustomIcons.Plus size={16} color={COLORS.error} />
+                </View>
+                <View style={styles.menuItemInfo}>
+                  <Text style={styles.menuItemTitle}>Agregar amigo</Text>
+                  <Text style={styles.menuItemSubtitle}>Buscar y agregar nuevos amigos</Text>
+                </View>
+              </View>
+              <CustomIcons.ChevronRight size={16} color={COLORS.textMuted} />
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Configuración expandida */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>⚙️ Configuración</Text>
+          
+          <View style={styles.menuContainer}>
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => handleActionPress('notifications', 'Notificaciones')}
+              activeOpacity={0.8}
+            >
+              <View style={styles.menuItemLeft}>
+                <View style={[styles.menuIcon, { backgroundColor: COLORS.blue50 }]}>
+                  <CustomIcons.Bell size={16} color={COLORS.primary} />
+                </View>
+                <View style={styles.menuItemInfo}>
+                  <Text style={styles.menuItemTitle}>Notificaciones</Text>
+                  <Text style={styles.menuItemSubtitle}>Recordatorios y alertas</Text>
+                </View>
+              </View>
+              <CustomIcons.ChevronRight size={16} color={COLORS.textMuted} />
+            </TouchableOpacity>
+
+            <View style={styles.menuDivider} />
+
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => handleActionPress('goals', 'Metas personales')}
+              activeOpacity={0.8}
+            >
+              <View style={styles.menuItemLeft}>
+                <View style={[styles.menuIcon, { backgroundColor: COLORS.successSoft }]}>
+                  <CustomIcons.Target size={16} color={COLORS.success} />
+                </View>
+                <View style={styles.menuItemInfo}>
+                  <Text style={styles.menuItemTitle}>Metas personales</Text>
+                  <Text style={styles.menuItemSubtitle}>Objetivos y seguimiento</Text>
+                </View>
+              </View>
+              <CustomIcons.ChevronRight size={16} color={COLORS.textMuted} />
+            </TouchableOpacity>
+
+            <View style={styles.menuDivider} />
+
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => handleActionPress('privacy', 'Privacidad')}
+              activeOpacity={0.8}
+            >
+              <View style={styles.menuItemLeft}>
+                <View style={[styles.menuIcon, { backgroundColor: COLORS.warningSoft }]}>
+                  <CustomIcons.Shield size={16} color={COLORS.warning} />
+                </View>
+                <View style={styles.menuItemInfo}>
+                  <Text style={styles.menuItemTitle}>Privacidad y datos</Text>
+                  <Text style={styles.menuItemSubtitle}>Control de información</Text>
+                </View>
+              </View>
+              <CustomIcons.ChevronRight size={16} color={COLORS.textMuted} />
+            </TouchableOpacity>
+
+            <View style={styles.menuDivider} />
+
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => handleActionPress('help', 'Ayuda y soporte')}
+              activeOpacity={0.8}
+            >
+              <View style={styles.menuItemLeft}>
+                <View style={[styles.menuIcon, { backgroundColor: COLORS.gray100 }]}>
+                  <CustomIcons.HelpCircle size={16} color={COLORS.textSecondary} />
+                </View>
+                <View style={styles.menuItemInfo}>
+                  <Text style={styles.menuItemTitle}>Ayuda y soporte</Text>
+                  <Text style={styles.menuItemSubtitle}>Centro de ayuda</Text>
+                </View>
+              </View>
+              <CustomIcons.ChevronRight size={16} color={COLORS.textMuted} />
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Información adicional */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>📱 Información de la app</Text>
+          
+          <View style={styles.infoCard}>
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>Versión</Text>
+              <Text style={styles.infoValue}>1.0.0</Text>
+            </View>
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>Cuenta creada</Text>
+              <Text style={styles.infoValue}>
+                {user?.metadata?.creationTime 
+                  ? new Date(user.metadata.creationTime).toLocaleDateString('es-ES')
+                  : 'Recientemente'
+                }
+              </Text>
+            </View>
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>ID de usuario</Text>
+              <Text style={[styles.infoValue, styles.infoValueSmall]}>
+                {user?.uid?.substring(0, 8)}...
+              </Text>
+            </View>
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>Fotos de perfil</Text>
+              <Text style={styles.infoValue}>
+                {userForAvatar.profilePicture ? 'Configurada' : 'Sin configurar'}
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        {/* Botón cerrar sesión */}
+        <View style={styles.section}>
+          <TouchableOpacity 
+            style={styles.signOutButton} 
+            onPress={handleSignOut}
+            activeOpacity={0.8}
+          >
+            <CustomIcons.LogOut size={16} color={COLORS.white} />
+            <Text style={styles.signOutButtonText}>Cerrar sesión</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Footer */}
+        <View style={styles.footer}>
+          <Text style={styles.footerText}>Tranki v1.0.0</Text>
+          <Text style={styles.footerSubtext}>Hecho con cuidado para tu bienestar</Text>
+          <Text style={styles.footerNote}>
+            Tus datos están seguros y se almacenan de forma privada
+          </Text>
+        </View>
+      </ScrollView>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  // Estilos principales del contenedor
   container: {
     flex: 1,
     backgroundColor: COLORS.background,
   },
+
   loadingContainer: {
     flex: 1,
+    backgroundColor: COLORS.background,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: COLORS.background,
+  },
+  loadingContent: {
+    alignItems: 'center',
   },
   loadingText: {
-    marginTop: 15,
-    color: COLORS.text,
-    fontSize: 16,
+    marginTop: Theme.spacing.md,
+    fontSize: Theme.typography.body,
+    color: COLORS.textSecondary,
+    fontWeight: '500',
   },
-
-  // Estilos del header
+  
+  // Header
   header: {
-    backgroundColor: COLORS.primary,
-    paddingTop: 50,
-    paddingBottom: 20,
-    paddingHorizontal: 20,
-    alignItems: 'center',
+    backgroundColor: COLORS.white,
+    paddingHorizontal: Theme.spacing.lg,
+    paddingVertical: Theme.spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.borderLight,
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    alignItems: 'center',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.1,
+        shadowRadius: 3,
+      },
+      android: {
+        elevation: 3,
+      },
+    }),
+  },
+  backButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: COLORS.gray50,
+    marginRight: Theme.spacing.md,
+  },
+  headerInfo: {
+    flex: 1,
   },
   headerTitle: {
-    color: COLORS.white,
-    fontSize: 20,
-    fontWeight: 'bold',
-    flex: 1,
-    textAlign: 'center',
-  },
-  saveButton: {
-    backgroundColor: COLORS.white,
-    paddingHorizontal: 15,
-    paddingVertical: 8,
-    borderRadius: 15,
-  },
-  saveButtonText: {
-    color: COLORS.primary,
-    fontSize: 14,
-    fontWeight: 'bold',
-  },
-
-  // Estilos del contenido principal
-  content: {
-    flex: 1,
-    padding: 20,
-  },
-  dayContainer: {
-    backgroundColor: COLORS.white,
-    borderRadius: 12,
-    padding: 15,
-    marginBottom: 15,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  dayHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 15,
-  },
-  dayTitle: {
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: COLORS.text,
+    marginBottom: 2,
   },
-  addButton: {
-    backgroundColor: COLORS.primary,
-    paddingHorizontal: 15,
-    paddingVertical: 8,
-    borderRadius: 15,
-  },
-  addButtonText: {
-    color: COLORS.white,
+  headerSubtitle: {
     fontSize: 12,
-    fontWeight: 'bold',
+    color: COLORS.textSecondary,
   },
-  sectionTitle: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: COLORS.text,
-    marginBottom: 10,
-    marginTop: 10,
-  },
-  emptyDay: {
-    alignItems: 'center',
-    padding: 20,
-  },
-  emptyDayText: {
-    color: COLORS.text,
-    opacity: 0.6,
-    fontStyle: 'italic',
-  },
-
-  // Estilos de eventos
-  eventCard: {
-    backgroundColor: COLORS.background,
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 8,
-    borderLeftWidth: 4,
-  },
-  eventHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  eventIcon: {
-    fontSize: 20,
-    marginRight: 10,
-  },
-  eventInfo: {
-    flex: 1,
-  },
-  eventTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: COLORS.text,
-  },
-  eventTime: {
-    fontSize: 14,
-    color: COLORS.text,
-    opacity: 0.7,
-  },
-  deleteButton: {
-    padding: 5,
-  },
-  deleteButtonText: {
-    color: '#F44336',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-
-  // Estilos de tiempo libre
-  freeTimeCard: {
-    backgroundColor: '#E8F5E8',
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  freeTimeIcon: {
-    fontSize: 20,
-    marginRight: 10,
-  },
-  freeTimeInfo: {
-    flex: 1,
-  },
-  freeTimeText: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: '#2E7D2E',
-  },
-  freeTimeHours: {
-    fontSize: 12,
-    color: '#2E7D2E',
-    opacity: 0.8,
-  },
-  suggestion: {
-    fontSize: 12,
-    color: '#2E7D2E',
-    fontStyle: 'italic',
-    marginTop: 2,
-  },
-
-  // Estilos del modal
-  modalContainer: {
-    flex: 1,
+  headerAction: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: COLORS.gray50,
   },
-  modalContent: {
-    backgroundColor: COLORS.white,
-    borderRadius: 20,
-    padding: 20,
-    width: '90%',
-    maxWidth: 400,
+  
+  // Sections
+  section: {
+    marginHorizontal: Theme.spacing.xl,
+    marginBottom: Theme.spacing.xxxl,
   },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Theme.spacing.lg,
+  },
+  sectionTitle: {
+    fontSize: Theme.typography.h4,
+    fontWeight: '600',
     color: COLORS.text,
-    textAlign: 'center',
-    marginBottom: 20,
   },
-  input: {
-    borderWidth: 1,
-    borderColor: COLORS.lightGray,
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 15,
-    fontSize: 16,
+  viewMoreButton: {
+    backgroundColor: COLORS.blue50,
+    paddingHorizontal: Theme.spacing.md,
+    paddingVertical: Theme.spacing.sm,
+    borderRadius: Theme.borderRadius.medium,
   },
-  inputLabel: {
-    fontSize: 14,
-    color: COLORS.text,
-    marginBottom: 5,
+  viewMoreText: {
+    fontSize: Theme.typography.caption,
+    color: COLORS.primary,
     fontWeight: '500',
   },
-  typeSelector: {
-    marginBottom: 15,
-  },
-  typeButtons: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-  },
-  typeButton: {
-    alignItems: 'center',
-    padding: 10,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: COLORS.lightGray,
-    width: '48%',
-    marginBottom: 8,
-  },
-  typeButtonIcon: {
-    fontSize: 20,
-    marginBottom: 4,
-  },
-  typeButtonText: {
-    fontSize: 12,
-    color: COLORS.text,
-  },
-  timeInputs: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  timeInput: {
-    width: '48%',
-  },
-  modalButtons: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 20,
-  },
-  cancelButton: {
-    backgroundColor: COLORS.lightGray,
-    paddingHorizontal: 25,
-    paddingVertical: 12,
-    borderRadius: 20,
-    flex: 1,
-    marginRight: 10,
-    alignItems: 'center',
-  },
-  cancelButtonText: {
-    color: COLORS.text,
-    fontWeight: 'bold',
-  },
-  confirmButton: {
-    backgroundColor: COLORS.primary,
-    paddingHorizontal: 25,
-    paddingVertical: 12,
-    borderRadius: 20,
-    flex: 1,
-    marginLeft: 10,
-    alignItems: 'center',
-  },
-  confirmButtonText: {
-    color: COLORS.white,
-    fontWeight: 'bold',
-  },
-
-  // Estilos de consejos
-  tipsContainer: {
-    marginTop: 20,
-    marginBottom: 30,
-  },
-  tipsTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: COLORS.text,
-    marginBottom: 10,
-  },
-  tipCard: {
-    backgroundColor: COLORS.white,
-    padding: 15,
-    borderRadius: 12,
-    borderLeftWidth: 4,
-    borderLeftColor: COLORS.secondary,
-  },
-  tipText: {
-    fontSize: 14,
-    color: COLORS.text,
-    lineHeight: 20,
-  },
-
-  // Estilos del perfil
+  
+  // Profile
   profileSection: {
-    alignItems: 'center',
+    marginHorizontal: Theme.spacing.xl,
+    marginBottom: Theme.spacing.xxxl,
+  },
+  profileCard: {
     backgroundColor: COLORS.white,
-    margin: 20,
-    padding: 30,
-    borderRadius: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  avatarContainer: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: COLORS.primary,
-    justifyContent: 'center',
+    borderRadius: Theme.borderRadius.large,
+    padding: Theme.spacing.xxxl,
     alignItems: 'center',
-    marginBottom: 15,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    ...Theme.shadows.small,
   },
-  avatar: {
-    fontSize: 40,
-    color: COLORS.white,
+  
+  // Badges
+  badgesSection: {
+    flexDirection: 'row',
+    gap: Theme.spacing.sm,
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    marginTop: Theme.spacing.lg,
   },
-  userName: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: COLORS.text,
-    marginBottom: 5,
+  badge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: Theme.spacing.md,
+    paddingVertical: Theme.spacing.sm,
+    borderRadius: Theme.borderRadius.full,
+    gap: 4,
   },
-  userEmail: {
-    fontSize: 16,
-    color: COLORS.text,
-    opacity: 0.7,
-    marginBottom: 5,
+  badgeEmoji: {
+    fontSize: 12,
   },
-  userRole: {
-    fontSize: 14,
-    color: COLORS.primary,
-    fontWeight: '500',
+  badgeText: {
+    fontSize: Theme.typography.small,
+    fontWeight: '600',
   },
-
-  // Estilos de estadísticas
-  statsSection: {
-    margin: 20,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: COLORS.text,
-    marginBottom: 15,
-  },
+  
+  // Stats
   statsGrid: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    gap: Theme.spacing.md,
+    marginBottom: Theme.spacing.lg,
   },
   statCard: {
-    backgroundColor: COLORS.white,
-    padding: 20,
-    borderRadius: 15,
-    alignItems: 'center',
     flex: 1,
-    marginHorizontal: 5,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    backgroundColor: COLORS.white,
+    padding: Theme.spacing.lg,
+    borderRadius: Theme.borderRadius.large,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    ...Theme.shadows.small,
+  },
+  statIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: COLORS.blue50,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: Theme.spacing.md,
+  },
+  statIcon: {
+    fontSize: 18,
   },
   statNumber: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: COLORS.primary,
-    marginBottom: 5,
+    fontSize: Theme.typography.h3,
+    fontWeight: '700',
+    color: COLORS.text,
+    marginBottom: Theme.spacing.xs,
   },
   statLabel: {
-    fontSize: 12,
-    color: COLORS.text,
+    fontSize: Theme.typography.small,
+    color: COLORS.textSecondary,
     textAlign: 'center',
+    fontWeight: '500',
   },
 
-  // Estilos de acciones
-  actionsSection: {
-    margin: 20,
+  // Social Stats
+  socialStatsGrid: {
+    flexDirection: 'row',
+    gap: Theme.spacing.md,
+    marginBottom: Theme.spacing.lg,
   },
-  actionButton: {
+  socialStatCard: {
+    flex: 1,
+    backgroundColor: COLORS.blue50,
+    padding: Theme.spacing.md,
+    borderRadius: Theme.borderRadius.medium,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.blue200,
+  },
+  socialStatNumber: {
+    fontSize: Theme.typography.h4,
+    fontWeight: '700',
+    color: COLORS.blue600,
+    marginBottom: 4,
+  },
+  socialStatLabel: {
+    fontSize: Theme.typography.small,
+    color: COLORS.blue600,
+    textAlign: 'center',
+  },
+  
+  // Motivation card
+  motivationCard: {
     backgroundColor: COLORS.white,
-    padding: 15,
-    borderRadius: 12,
+    padding: Theme.spacing.lg,
+    borderRadius: Theme.borderRadius.large,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    alignItems: 'center',
+    ...Theme.shadows.small,
+  },
+  motivationText: {
+    fontSize: Theme.typography.h5,
+    fontWeight: '600',
+    color: COLORS.primary,
+    textAlign: 'center',
+    marginBottom: Theme.spacing.sm,
+  },
+  trendText: {
+    fontSize: Theme.typography.caption,
+    color: COLORS.textSecondary,
+    textAlign: 'center',
+  },
+  
+  // Quick Navigation
+  quickNavGrid: {
+    flexDirection: 'row',
+    gap: Theme.spacing.lg,
+  },
+  quickNavItem: {
+    flex: 1,
+    backgroundColor: COLORS.white,
+    padding: Theme.spacing.lg,
+    borderRadius: Theme.borderRadius.large,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    ...Theme.shadows.small,
+    position: 'relative',
+  },
+  quickNavIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: Theme.spacing.md,
+  },
+  quickNavText: {
+    fontSize: Theme.typography.caption,
+    color: COLORS.text,
+    fontWeight: '600',
+  },
+  quickNavBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    backgroundColor: COLORS.error,
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  quickNavBadgeText: {
+    color: COLORS.white,
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  
+  // Menu
+  menuContainer: {
+    backgroundColor: COLORS.white,
+    borderRadius: Theme.borderRadius.large,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    ...Theme.shadows.small,
+  },
+  menuItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
+    justifyContent: 'space-between',
+    padding: Theme.spacing.lg,
   },
-  actionIcon: {
-    fontSize: 20,
-    marginRight: 15,
-  },
-  actionText: {
-    flex: 1,
-    fontSize: 16,
-    color: COLORS.text,
-  },
-  actionArrow: {
-    fontSize: 16,
-    color: COLORS.text,
-    opacity: 0.5,
-  },
-  signOutButton: {
-    backgroundColor: '#F44336',
-    marginHorizontal: 20,
-    padding: 15,
-    borderRadius: 12,
+  menuItemLeft: {
+    flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 20,
+    flex: 1,
+  },
+  menuItemRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  menuIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: Theme.spacing.lg,
+  },
+  menuItemInfo: {
+    flex: 1,
+  },
+  menuItemTitle: {
+    fontSize: Theme.typography.body,
+    color: COLORS.text,
+    fontWeight: '500',
+    marginBottom: Theme.spacing.xs,
+  },
+  menuItemSubtitle: {
+    fontSize: Theme.typography.small,
+    color: COLORS.textMuted,
+  },
+  menuDivider: {
+    height: 1,
+    backgroundColor: COLORS.borderLight,
+    marginHorizontal: Theme.spacing.lg,
+  },
+  menuBadge: {
+    backgroundColor: COLORS.primary,
+    borderRadius: 12,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    marginRight: 8,
+  },
+  menuBadgeText: {
+    color: COLORS.white,
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  
+  // Info card
+  infoCard: {
+    backgroundColor: COLORS.white,
+    borderRadius: Theme.borderRadius.large,
+    padding: Theme.spacing.lg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    ...Theme.shadows.small,
+  },
+  infoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: Theme.spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.borderLight,
+  },
+  infoLabel: {
+    fontSize: Theme.typography.body,
+    color: COLORS.textSecondary,
+    fontWeight: '500',
+  },
+  infoValue: {
+    fontSize: Theme.typography.body,
+    color: COLORS.text,
+    fontWeight: '600',
+  },
+  infoValueSmall: {
+    fontSize: Theme.typography.caption,
+    fontFamily: 'monospace',
+  },
+  
+  // Sign out
+  signOutButton: {
+    backgroundColor: COLORS.error,
+    paddingVertical: Theme.spacing.lg,
+    paddingHorizontal: Theme.spacing.xl,
+    borderRadius: Theme.borderRadius.medium,
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 8,
+    ...Theme.shadows.small,
   },
   signOutButtonText: {
     color: COLORS.white,
-    fontSize: 16,
-    fontWeight: 'bold',
+    fontSize: Theme.typography.h5,
+    fontWeight: '600',
   },
+  
+  // Footer
   footer: {
     alignItems: 'center',
-    padding: 20,
+    paddingVertical: Theme.spacing.xxxl,
+    paddingHorizontal: Theme.spacing.xl,
   },
   footerText: {
-    fontSize: 12,
-    color: COLORS.text,
-    opacity: 0.5,
-    marginBottom: 2,
+    fontSize: Theme.typography.caption,
+    color: COLORS.textMuted,
+    fontWeight: '500',
+    marginBottom: Theme.spacing.xs,
+  },
+  footerSubtext: {
+    fontSize: Theme.typography.small,
+    color: COLORS.textMuted,
+    marginBottom: Theme.spacing.sm,
+  },
+  footerNote: {
+    fontSize: Theme.typography.small,
+    color: COLORS.textMuted,
+    textAlign: 'center',
+    fontStyle: 'italic',
   },
 });
 
