@@ -1,4 +1,4 @@
-// src/screens/ProfileScreen.js - FUNCIONES SOCIALES FUNCIONANDO
+// src/screens/ProfileScreen.js - Rediseño limpio y optimizado
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -10,9 +10,10 @@ import {
   SafeAreaView,
   StatusBar,
   Platform,
+  Animated,
 } from 'react-native';
 import auth from '@react-native-firebase/auth';
-import { COLORS, Theme, getEmotionColor, getEmotionIcon } from '../constants/colors';
+import { COLORS } from '../constants/colors';
 import CustomIcons from '../components/CustomIcons';
 import AvatarPicker from '../components/AvatarPicker';
 import FirebaseService from '../services/firebase';
@@ -22,12 +23,21 @@ const ProfileScreen = ({ navigation }) => {
   const [user, setUser] = useState(null);
   const [userData, setUserData] = useState(null);
   const [stats, setStats] = useState({ totalDays: 0, avgMood: 0, streak: 0 });
-  const [socialStats, setSocialStats] = useState({ friendsCount: 0, sharedStatesCount: 0, receivedLikesCount: 0 });
+  const [socialStats, setSocialStats] = useState({ 
+    friendsCount: 0, 
+    sharedStatesCount: 0, 
+    receivedLikesCount: 0 
+  });
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState('overview'); // 'overview', 'social', 'settings'
+  const [fadeAnim] = useState(new Animated.Value(0));
 
   useEffect(() => {
     StatusBar.setBarStyle('dark-content');
-    StatusBar.setBackgroundColor(COLORS.white);
+    if (Platform.OS === 'android') {
+      StatusBar.setBackgroundColor('transparent');
+      StatusBar.setTranslucent(true);
+    }
     
     const currentUser = auth().currentUser;
     setUser(currentUser);
@@ -36,6 +46,12 @@ const ProfileScreen = ({ navigation }) => {
       loadUserStats(currentUser.uid);
       loadSocialStats(currentUser.uid);
     }
+
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 600,
+      useNativeDriver: true,
+    }).start();
   }, []);
 
   const loadUserData = async (userId) => {
@@ -61,7 +77,7 @@ const ProfileScreen = ({ navigation }) => {
         ? (history.reduce((sum, record) => sum + record.value, 0) / history.length)
         : 0;
 
-      // Calcular racha actual
+      // Calcular racha
       const sortedHistory = history.sort((a, b) => new Date(b.date) - new Date(a.date));
       let streak = 0;
       const today = new Date();
@@ -86,11 +102,6 @@ const ProfileScreen = ({ navigation }) => {
       });
     } catch (error) {
       console.error('Error loading user stats:', error);
-      setStats({
-        totalDays: 0,
-        avgMood: 0,
-        streak: 0
-      });
     }
   };
 
@@ -103,39 +114,25 @@ const ProfileScreen = ({ navigation }) => {
     }
   };
 
-  // Manejar actualización de foto de perfil
   const handleImageUpdate = async (imageData) => {
     try {
       if (!user?.uid) return;
-
-      // Actualizar en Firestore
       await SocialService.updateProfilePicture(user.uid, imageData);
-      
-      // Actualizar estado local
-      setUserData(prev => ({
-        ...prev,
-        profilePicture: imageData
-      }));
-      
-      console.log('✅ Foto de perfil actualizada en el estado');
+      setUserData(prev => ({ ...prev, profilePicture: imageData }));
     } catch (error) {
-      console.error('Error actualizando foto en Firestore:', error);
-      Alert.alert(
-        '⚠️ Advertencia',
-        'La foto se subió pero hubo un problema actualizando tu perfil. Intenta reiniciar la app.',
-        [{ text: 'Entendido' }]
-      );
+      console.error('Error actualizando foto:', error);
+      Alert.alert('Error', 'No se pudo actualizar la foto de perfil');
     }
   };
 
   const handleSignOut = () => {
     Alert.alert(
-      '🚪 Cerrar sesión',
-      '¿Estás seguro que quieres cerrar sesión?',
+      'Cerrar sesión',
+      '¿Estás seguro que quieres salir?',
       [
         { text: 'Cancelar', style: 'cancel' },
         {
-          text: 'Cerrar sesión',
+          text: 'Salir',
           style: 'destructive',
           onPress: () => auth().signOut()
         }
@@ -143,67 +140,18 @@ const ProfileScreen = ({ navigation }) => {
     );
   };
 
-  const handleExportData = async () => {
-    try {
-      Alert.alert(
-        '📤 Exportar datos',
-        'Preparando tus datos para exportar...',
-        [{ text: 'Entendido' }]
-      );
-      
-      const exportData = await FirebaseService.exportUserData(user.uid);
-      console.log('Data exported:', exportData);
-      
-      Alert.alert(
-        '✅ Datos preparados',
-        'Tus datos han sido preparados. Esta función se completará pronto.',
-        [{ text: 'OK' }]
-      );
-    } catch (error) {
-      Alert.alert('❌ Error', 'No se pudieron exportar los datos');
-    }
-  };
-
-  // ========== FUNCIONES SOCIALES FUNCIONANDO ==========
-  
-  const handleFriendsScreen = () => {
-    navigation.navigate('Friends');
-  };
-
-  const handleSocialFeed = () => {
-    navigation.navigate('SocialFeed');
-  };
-
-  const handleAddFriend = () => {
-    Alert.alert(
-      '👥 Agregar amigo',
-      'Ingresa el email del amigo que quieres agregar:',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Buscar',
-          onPress: () => {
-            // Por ahora navegamos a la pantalla de buscar amigos
-            navigation.navigate('SearchFriends');
-          }
-        }
-      ]
-    );
-  };
-
   const handleShareEmotion = async () => {
     try {
-      // Obtener la emoción más reciente del usuario
       const today = new Date().toISOString().split('T')[0];
       const todayEmotions = await FirebaseService.getTodayEmotions(user.uid, today);
       
       if (todayEmotions.length === 0) {
         Alert.alert(
-          '📱 Compartir estado',
-          'Primero registra tu estado emocional del día para poder compartirlo.',
+          'Sin registro',
+          'Primero registra tu estado emocional del día.',
           [
             { text: 'Cancelar', style: 'cancel' },
-            { text: 'Registrar estado', onPress: () => navigation.navigate('EmotionSelector') }
+            { text: 'Registrar', onPress: () => navigation.navigate('EmotionSelector') }
           ]
         );
         return;
@@ -212,8 +160,8 @@ const ProfileScreen = ({ navigation }) => {
       const latestEmotion = todayEmotions[todayEmotions.length - 1];
       
       Alert.alert(
-        '📱 Compartir estado emocional',
-        `¿Quieres compartir que te sientes ${latestEmotion.emotion} con tus amigos?`,
+        'Compartir estado',
+        `¿Compartir que te sientes ${latestEmotion.emotion}?`,
         [
           { text: 'Cancelar', style: 'cancel' },
           {
@@ -223,46 +171,20 @@ const ProfileScreen = ({ navigation }) => {
                 await SocialService.shareEmotionalState(user.uid, {
                   emotion: latestEmotion.emotion,
                   value: latestEmotion.value,
-                  message: `Me siento ${latestEmotion.emotion} hoy 😊`
+                  message: `Me siento ${latestEmotion.emotion} hoy`
                 });
                 
-                Alert.alert('✅ Compartido', 'Tu estado emocional ha sido compartido con tus amigos');
-                
-                // Recargar estadísticas sociales
+                Alert.alert('✓ Compartido', 'Estado compartido con tus amigos');
                 loadSocialStats(user.uid);
               } catch (error) {
-                Alert.alert('❌ Error', 'No se pudo compartir tu estado');
+                Alert.alert('Error', 'No se pudo compartir');
               }
             }
           }
         ]
       );
     } catch (error) {
-      Alert.alert('❌ Error', 'No se pudo obtener tu estado emocional');
-    }
-  };
-
-  const handleActionPress = (action, title) => {
-    const actions = {
-      notifications: () => Alert.alert('🔔 Notificaciones', 'Configuración de notificaciones próximamente disponible'),
-      goals: () => Alert.alert('🎯 Metas', 'Función de metas personales próximamente disponible'),
-      export: handleExportData,
-      help: () => Alert.alert('❓ Ayuda', 'Centro de ayuda próximamente disponible'),
-      privacy: () => Alert.alert('🔒 Privacidad', 'Configuración de privacidad próximamente disponible'),
-      theme: () => Alert.alert('🎨 Tema', 'Configuración de tema próximamente disponible'),
-      
-      // FUNCIONES SOCIALES QUE SÍ FUNCIONAN
-      friends: handleFriendsScreen,
-      social: handleSocialFeed,
-      addFriend: handleAddFriend,
-      shareEmotion: handleShareEmotion,
-    };
-
-    const actionFunction = actions[action];
-    if (actionFunction) {
-      actionFunction();
-    } else {
-      Alert.alert(title, `Función ${title.toLowerCase()} próximamente disponible`);
+      Alert.alert('Error', 'No se pudo obtener tu estado');
     }
   };
 
@@ -275,20 +197,11 @@ const ProfileScreen = ({ navigation }) => {
 
   const getMoodColor = (avgMood) => {
     const mood = parseFloat(avgMood);
-    if (mood >= 2.5) return COLORS.success;
-    if (mood >= 2.0) return COLORS.warning;
-    return COLORS.error;
+    if (mood >= 2.5) return '#10B981';
+    if (mood >= 2.0) return '#F59E0B';
+    return '#EF4444';
   };
 
-  const getStreakMessage = () => {
-    if (stats.streak === 0) return 'Empieza tu racha hoy';
-    if (stats.streak === 1) return '¡Buen comienzo!';
-    if (stats.streak <= 7) return '¡Vas muy bien!';
-    if (stats.streak <= 30) return '¡Increíble constancia!';
-    return '¡Eres un campeón!';
-  };
-
-  // Preparar datos del usuario para el AvatarPicker
   const userForAvatar = {
     id: user?.uid,
     name: userData?.name || user?.displayName || 'Usuario',
@@ -303,434 +216,369 @@ const ProfileScreen = ({ navigation }) => {
     return (
       <SafeAreaView style={styles.loadingContainer}>
         <View style={styles.loadingContent}>
-          <CustomIcons.User size={48} color={COLORS.primary} />
+          <View style={styles.loadingCircle}>
+            <CustomIcons.User size={32} color={COLORS.white} />
+          </View>
           <Text style={styles.loadingText}>Cargando perfil...</Text>
         </View>
       </SafeAreaView>
     );
   }
 
-  return (
-    <SafeAreaView style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-          activeOpacity={0.7}
-        >
-          <CustomIcons.ArrowLeft size={20} color={COLORS.text} />
-        </TouchableOpacity>
-        <View style={styles.headerInfo}>
-          <Text style={styles.headerTitle}>Mi Perfil</Text>
-          <Text style={styles.headerSubtitle}>Información personal y estadísticas</Text>
-        </View>
-        <TouchableOpacity 
-          style={styles.headerAction}
-          onPress={() => handleActionPress('export', 'Exportar datos')}
-        >
-          <CustomIcons.Download size={18} color={COLORS.textMuted} />
-        </TouchableOpacity>
-      </View>
-
-      <ScrollView showsVerticalScrollIndicator={false}>
-        {/* Perfil principal con foto de perfil */}
-        <View style={styles.profileSection}>
-          <View style={styles.profileCard}>
-            <AvatarPicker
-              user={userForAvatar}
-              onImageUpdate={handleImageUpdate}
-              size={120}
-              editable={true}
-              showName={true}
-            />
-
-            {/* Badges de logros */}
-            <View style={styles.badgesSection}>
-              {stats.streak >= 7 && (
-                <View style={[styles.badge, { backgroundColor: COLORS.successSoft }]}>
-                  <Text style={styles.badgeEmoji}>🔥</Text>
-                  <Text style={[styles.badgeText, { color: COLORS.success }]}>Constante</Text>
-                </View>
-              )}
-              
-              {stats.totalDays >= 30 && (
-                <View style={[styles.badge, { backgroundColor: COLORS.blue50 }]}>
-                  <Text style={styles.badgeEmoji}>⭐</Text>
-                  <Text style={[styles.badgeText, { color: COLORS.primary }]}>Veterano</Text>
-                </View>
-              )}
-              
-              {parseFloat(stats.avgMood) >= 2.5 && (
-                <View style={[styles.badge, { backgroundColor: COLORS.warningSoft }]}>
-                  <Text style={styles.badgeEmoji}>😊</Text>
-                  <Text style={[styles.badgeText, { color: COLORS.warning }]}>Positivo</Text>
-                </View>
-              )}
-
-              {socialStats.friendsCount >= 5 && (
-                <View style={[styles.badge, { backgroundColor: COLORS.errorSoft }]}>
-                  <Text style={styles.badgeEmoji}>👥</Text>
-                  <Text style={[styles.badgeText, { color: COLORS.error }]}>Social</Text>
-                </View>
-              )}
-            </View>
-          </View>
-        </View>
-
-        {/* Estadísticas mejoradas con datos sociales */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>📊 Estadísticas</Text>
-            <TouchableOpacity
-              style={styles.viewMoreButton}
-              onPress={() => navigation.navigate('History')}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.viewMoreText}>Ver más</Text>
-            </TouchableOpacity>
+  const renderOverviewTab = () => (
+    <Animated.View style={{ opacity: fadeAnim }}>
+      {/* Stats compactos */}
+      <View style={styles.statsSection}>
+        <View style={styles.statsGrid}>
+          <View style={styles.statCard}>
+            <Text style={styles.statNumber}>{stats.totalDays}</Text>
+            <Text style={styles.statLabel}>Días</Text>
           </View>
           
-          <View style={styles.statsGrid}>
-            <View style={styles.statCard}>
-              <View style={styles.statIconContainer}>
-                <Text style={styles.statIcon}>📅</Text>
-              </View>
-              <Text style={styles.statNumber}>{stats.totalDays}</Text>
-              <Text style={styles.statLabel}>Días registrados</Text>
-            </View>
-            
-            <View style={styles.statCard}>
-              <View style={[styles.statIconContainer, { backgroundColor: getMoodColor(stats.avgMood) + '20' }]}>
-                <Text style={styles.statIcon}>{getMoodIcon(stats.avgMood)}</Text>
-              </View>
-              <Text style={[styles.statNumber, { color: getMoodColor(stats.avgMood) }]}>
-                {stats.avgMood}
-              </Text>
-              <Text style={styles.statLabel}>Estado promedio</Text>
-            </View>
-            
-            <View style={styles.statCard}>
-              <View style={[styles.statIconContainer, { backgroundColor: COLORS.warning + '20' }]}>
-                <Text style={styles.statIcon}>🔥</Text>
-              </View>
-              <Text style={[styles.statNumber, { color: COLORS.warning }]}>
-                {stats.streak}
-              </Text>
-              <Text style={styles.statLabel}>Racha actual</Text>
-            </View>
+          <View style={[styles.statCard, styles.statCardHighlight]}>
+            <Text style={[styles.statNumber, { color: getMoodColor(stats.avgMood) }]}>
+              {getMoodIcon(stats.avgMood)}
+            </Text>
+            <Text style={styles.statLabel}>Estado</Text>
           </View>
-
-          {/* Estadísticas sociales */}
-          <View style={styles.socialStatsGrid}>
-            <View style={styles.socialStatCard}>
-              <Text style={styles.socialStatNumber}>{socialStats.friendsCount}</Text>
-              <Text style={styles.socialStatLabel}>Amigos</Text>
-            </View>
-            <View style={styles.socialStatCard}>
-              <Text style={styles.socialStatNumber}>{socialStats.sharedStatesCount}</Text>
-              <Text style={styles.socialStatLabel}>Estados compartidos</Text>
-            </View>
-            <View style={styles.socialStatCard}>
-              <Text style={styles.socialStatNumber}>{socialStats.receivedLikesCount}</Text>
-              <Text style={styles.socialStatLabel}>Likes recibidos</Text>
-            </View>
+          
+          <View style={styles.statCard}>
+            <Text style={[styles.statNumber, { color: '#F59E0B' }]}>{stats.streak}</Text>
+            <Text style={styles.statLabel}>Racha</Text>
           </View>
+        </View>
+      </View>
 
-          {/* Mensaje motivacional */}
-          <View style={styles.motivationCard}>
-            <Text style={styles.motivationText}>{getStreakMessage()}</Text>
-            {stats.insights?.overallTrend && (
-              <Text style={styles.trendText}>
-                Tendencia: {stats.insights.overallTrend === 'improving' ? '📈 Mejorando' : 
-                          stats.insights.overallTrend === 'declining' ? '📉 Cuidándote' : '➡️ Estable'}
-              </Text>
+      {/* Navegación rápida */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Acceso rápido</Text>
+        
+        <View style={styles.quickGrid}>
+          <TouchableOpacity
+            style={styles.quickCard}
+            onPress={() => navigation.navigate('History')}
+            activeOpacity={0.8}
+          >
+            <View style={[styles.quickIcon, { backgroundColor: '#EBF5FB' }]}>
+              <CustomIcons.BarChart size={22} color={COLORS.primary} />
+            </View>
+            <Text style={styles.quickLabel}>Historial</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.quickCard}
+            onPress={() => navigation.navigate('Chat', { emotion: null })}
+            activeOpacity={0.8}
+          >
+            <View style={[styles.quickIcon, { backgroundColor: '#D1FAE5' }]}>
+              <CustomIcons.MessageCircle size={22} color="#10B981" />
+            </View>
+            <Text style={styles.quickLabel}>Chat IA</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.quickCard}
+            onPress={() => navigation.navigate('Places')}
+            activeOpacity={0.8}
+          >
+            <View style={[styles.quickIcon, { backgroundColor: '#FEF3C7' }]}>
+              <CustomIcons.MapPin size={22} color="#F59E0B" />
+            </View>
+            <Text style={styles.quickLabel}>Lugares</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.quickCard}
+            onPress={() => navigation.navigate('Schedule')}
+            activeOpacity={0.8}
+          >
+            <View style={[styles.quickIcon, { backgroundColor: '#FEE2E2' }]}>
+              <CustomIcons.Calendar size={22} color="#EF4444" />
+            </View>
+            <Text style={styles.quickLabel}>Agenda</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* Badges si existen */}
+      {(stats.streak >= 7 || stats.totalDays >= 30 || socialStats.friendsCount >= 5) && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Logros</Text>
+          <View style={styles.badgesGrid}>
+            {stats.streak >= 7 && (
+              <View style={styles.badgeCard}>
+                <Text style={styles.badgeEmoji}>🔥</Text>
+                <Text style={styles.badgeLabel}>Constante</Text>
+              </View>
+            )}
+            {stats.totalDays >= 30 && (
+              <View style={styles.badgeCard}>
+                <Text style={styles.badgeEmoji}>⭐</Text>
+                <Text style={styles.badgeLabel}>Veterano</Text>
+              </View>
+            )}
+            {socialStats.friendsCount >= 5 && (
+              <View style={styles.badgeCard}>
+                <Text style={styles.badgeEmoji}>👥</Text>
+                <Text style={styles.badgeLabel}>Social</Text>
+              </View>
             )}
           </View>
         </View>
+      )}
+    </Animated.View>
+  );
 
-        {/* Navegación rápida actualizada con funciones sociales */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>🚀 Navegación rápida</Text>
-          
-          <View style={styles.quickNavGrid}>
-            <TouchableOpacity
-              style={styles.quickNavItem}
-              onPress={() => navigation.navigate('Chat', { emotion: { id: 'neutral', label: 'Neutral' } })}
-              activeOpacity={0.8}
-            >
-              <View style={[styles.quickNavIcon, { backgroundColor: COLORS.blue50 }]}>
-                <CustomIcons.Chat size={16} color={COLORS.primary} />
-              </View>
-              <Text style={styles.quickNavText}>Chat IA</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.quickNavItem}
-              onPress={() => handleActionPress('friends', 'Amigos')}
-              activeOpacity={0.8}
-            >
-              <View style={[styles.quickNavIcon, { backgroundColor: COLORS.successSoft }]}>
-                <CustomIcons.User size={16} color={COLORS.success} />
-              </View>
-              <Text style={styles.quickNavText}>Amigos</Text>
-              {socialStats.friendsCount > 0 && (
-                <View style={styles.quickNavBadge}>
-                  <Text style={styles.quickNavBadgeText}>{socialStats.friendsCount}</Text>
-                </View>
-              )}
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.quickNavItem}
-              onPress={() => navigation.navigate('Places')}
-              activeOpacity={0.8}
-            >
-              <View style={[styles.quickNavIcon, { backgroundColor: COLORS.warningSoft }]}>
-                <CustomIcons.MapPin size={16} color={COLORS.warning} />
-              </View>
-              <Text style={styles.quickNavText}>Lugares</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.quickNavItem}
-              onPress={() => navigation.navigate('History')}
-              activeOpacity={0.8}
-            >
-              <View style={[styles.quickNavIcon, { backgroundColor: COLORS.errorSoft }]}>
-                <CustomIcons.BarChart size={16} color={COLORS.error} />
-              </View>
-              <Text style={styles.quickNavText}>Historial</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Nueva sección: Funciones sociales FUNCIONANDO */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>👥 Social</Text>
-          
-          <View style={styles.menuContainer}>
-            <TouchableOpacity
-              style={styles.menuItem}
-              onPress={() => handleActionPress('friends', 'Mis amigos')}
-              activeOpacity={0.8}
-            >
-              <View style={styles.menuItemLeft}>
-                <View style={[styles.menuIcon, { backgroundColor: COLORS.blue50 }]}>
-                  <CustomIcons.User size={16} color={COLORS.primary} />
-                </View>
-                <View style={styles.menuItemInfo}>
-                  <Text style={styles.menuItemTitle}>Mis amigos</Text>
-                  <Text style={styles.menuItemSubtitle}>
-                    {socialStats.friendsCount} amigos conectados
-                  </Text>
-                </View>
-              </View>
-              <View style={styles.menuItemRight}>
-                {socialStats.friendsCount > 0 && (
-                  <View style={styles.menuBadge}>
-                    <Text style={styles.menuBadgeText}>{socialStats.friendsCount}</Text>
-                  </View>
-                )}
-                <CustomIcons.ChevronRight size={16} color={COLORS.textMuted} />
-              </View>
-            </TouchableOpacity>
-
-            <View style={styles.menuDivider} />
-
-            <TouchableOpacity
-              style={styles.menuItem}
-              onPress={() => handleActionPress('social', 'Feed social')}
-              activeOpacity={0.8}
-            >
-              <View style={styles.menuItemLeft}>
-                <View style={[styles.menuIcon, { backgroundColor: COLORS.successSoft }]}>
-                  <CustomIcons.Heart size={16} color={COLORS.success} />
-                </View>
-                <View style={styles.menuItemInfo}>
-                  <Text style={styles.menuItemTitle}>Feed social</Text>
-                  <Text style={styles.menuItemSubtitle}>Estados de tus amigos</Text>
-                </View>
-              </View>
-              <CustomIcons.ChevronRight size={16} color={COLORS.textMuted} />
-            </TouchableOpacity>
-
-            <View style={styles.menuDivider} />
-
-            <TouchableOpacity
-              style={styles.menuItem}
-              onPress={() => handleActionPress('shareEmotion', 'Compartir estado')}
-              activeOpacity={0.8}
-            >
-              <View style={styles.menuItemLeft}>
-                <View style={[styles.menuIcon, { backgroundColor: COLORS.warningSoft }]}>
-                  <CustomIcons.Share size={16} color={COLORS.warning} />
-                </View>
-                <View style={styles.menuItemInfo}>
-                  <Text style={styles.menuItemTitle}>Compartir estado</Text>
-                  <Text style={styles.menuItemSubtitle}>
-                    {socialStats.sharedStatesCount} estados compartidos
-                  </Text>
-                </View>
-              </View>
-              <CustomIcons.ChevronRight size={16} color={COLORS.textMuted} />
-            </TouchableOpacity>
-
-            <View style={styles.menuDivider} />
-
-            <TouchableOpacity
-              style={styles.menuItem}
-              onPress={() => handleActionPress('addFriend', 'Agregar amigo')}
-              activeOpacity={0.8}
-            >
-              <View style={styles.menuItemLeft}>
-                <View style={[styles.menuIcon, { backgroundColor: COLORS.errorSoft }]}>
-                  <CustomIcons.Plus size={16} color={COLORS.error} />
-                </View>
-                <View style={styles.menuItemInfo}>
-                  <Text style={styles.menuItemTitle}>Agregar amigo</Text>
-                  <Text style={styles.menuItemSubtitle}>Buscar y agregar nuevos amigos</Text>
-                </View>
-              </View>
-              <CustomIcons.ChevronRight size={16} color={COLORS.textMuted} />
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Configuración expandida */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>⚙️ Configuración</Text>
-          
-          <View style={styles.menuContainer}>
-            <TouchableOpacity
-              style={styles.menuItem}
-              onPress={() => handleActionPress('notifications', 'Notificaciones')}
-              activeOpacity={0.8}
-            >
-              <View style={styles.menuItemLeft}>
-                <View style={[styles.menuIcon, { backgroundColor: COLORS.blue50 }]}>
-                  <CustomIcons.Bell size={16} color={COLORS.primary} />
-                </View>
-                <View style={styles.menuItemInfo}>
-                  <Text style={styles.menuItemTitle}>Notificaciones</Text>
-                  <Text style={styles.menuItemSubtitle}>Recordatorios y alertas</Text>
-                </View>
-              </View>
-              <CustomIcons.ChevronRight size={16} color={COLORS.textMuted} />
-            </TouchableOpacity>
-
-            <View style={styles.menuDivider} />
-
-            <TouchableOpacity
-              style={styles.menuItem}
-              onPress={() => handleActionPress('goals', 'Metas personales')}
-              activeOpacity={0.8}
-            >
-              <View style={styles.menuItemLeft}>
-                <View style={[styles.menuIcon, { backgroundColor: COLORS.successSoft }]}>
-                  <CustomIcons.Target size={16} color={COLORS.success} />
-                </View>
-                <View style={styles.menuItemInfo}>
-                  <Text style={styles.menuItemTitle}>Metas personales</Text>
-                  <Text style={styles.menuItemSubtitle}>Objetivos y seguimiento</Text>
-                </View>
-              </View>
-              <CustomIcons.ChevronRight size={16} color={COLORS.textMuted} />
-            </TouchableOpacity>
-
-            <View style={styles.menuDivider} />
-
-            <TouchableOpacity
-              style={styles.menuItem}
-              onPress={() => handleActionPress('privacy', 'Privacidad')}
-              activeOpacity={0.8}
-            >
-              <View style={styles.menuItemLeft}>
-                <View style={[styles.menuIcon, { backgroundColor: COLORS.warningSoft }]}>
-                  <CustomIcons.Shield size={16} color={COLORS.warning} />
-                </View>
-                <View style={styles.menuItemInfo}>
-                  <Text style={styles.menuItemTitle}>Privacidad y datos</Text>
-                  <Text style={styles.menuItemSubtitle}>Control de información</Text>
-                </View>
-              </View>
-              <CustomIcons.ChevronRight size={16} color={COLORS.textMuted} />
-            </TouchableOpacity>
-
-            <View style={styles.menuDivider} />
-
-            <TouchableOpacity
-              style={styles.menuItem}
-              onPress={() => handleActionPress('help', 'Ayuda y soporte')}
-              activeOpacity={0.8}
-            >
-              <View style={styles.menuItemLeft}>
-                <View style={[styles.menuIcon, { backgroundColor: COLORS.gray100 }]}>
-                  <CustomIcons.HelpCircle size={16} color={COLORS.textSecondary} />
-                </View>
-                <View style={styles.menuItemInfo}>
-                  <Text style={styles.menuItemTitle}>Ayuda y soporte</Text>
-                  <Text style={styles.menuItemSubtitle}>Centro de ayuda</Text>
-                </View>
-              </View>
-              <CustomIcons.ChevronRight size={16} color={COLORS.textMuted} />
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Información adicional */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>📱 Información de la app</Text>
-          
-          <View style={styles.infoCard}>
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>Versión</Text>
-              <Text style={styles.infoValue}>1.0.0</Text>
-            </View>
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>Cuenta creada</Text>
-              <Text style={styles.infoValue}>
-                {user?.metadata?.creationTime 
-                  ? new Date(user.metadata.creationTime).toLocaleDateString('es-ES')
-                  : 'Recientemente'
-                }
-              </Text>
-            </View>
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>ID de usuario</Text>
-              <Text style={[styles.infoValue, styles.infoValueSmall]}>
-                {user?.uid?.substring(0, 8)}...
-              </Text>
-            </View>
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>Fotos de perfil</Text>
-              <Text style={styles.infoValue}>
-                {userForAvatar.profilePicture ? 'Configurada' : 'Sin configurar'}
-              </Text>
-            </View>
-          </View>
-        </View>
-
-        {/* Botón cerrar sesión */}
-        <View style={styles.section}>
+  const renderSocialTab = () => (
+    <Animated.View style={{ opacity: fadeAnim }}>
+      {/* Stats sociales destacados */}
+      <View style={styles.socialStatsSection}>
+        <View style={styles.socialStatsGrid}>
           <TouchableOpacity 
-            style={styles.signOutButton} 
-            onPress={handleSignOut}
+            style={styles.socialStatCard}
+            onPress={() => navigation.navigate('Friends')}
             activeOpacity={0.8}
           >
-            <CustomIcons.LogOut size={16} color={COLORS.white} />
-            <Text style={styles.signOutButtonText}>Cerrar sesión</Text>
+            <Text style={styles.socialStatNumber}>{socialStats.friendsCount}</Text>
+            <Text style={styles.socialStatLabel}>Amigos</Text>
+            <CustomIcons.ChevronRight size={14} color="#9CA3AF" />
           </TouchableOpacity>
-        </View>
 
-        {/* Footer */}
-        <View style={styles.footer}>
-          <Text style={styles.footerText}>Tranki v1.0.0</Text>
-          <Text style={styles.footerSubtext}>Hecho con cuidado para tu bienestar</Text>
-          <Text style={styles.footerNote}>
-            Tus datos están seguros y se almacenan de forma privada
-          </Text>
+          <View style={styles.socialStatCard}>
+            <Text style={styles.socialStatNumber}>{socialStats.sharedStatesCount}</Text>
+            <Text style={styles.socialStatLabel}>Compartidos</Text>
+          </View>
+
+          <View style={styles.socialStatCard}>
+            <Text style={styles.socialStatNumber}>{socialStats.receivedLikesCount}</Text>
+            <Text style={styles.socialStatLabel}>Likes</Text>
+          </View>
         </View>
+      </View>
+
+      {/* Acciones sociales */}
+      <View style={styles.section}>
+        <TouchableOpacity
+          style={styles.actionCard}
+          onPress={() => navigation.navigate('Friends')}
+          activeOpacity={0.8}
+        >
+          <View style={[styles.actionIcon, { backgroundColor: '#EBF5FB' }]}>
+            <CustomIcons.User size={20} color={COLORS.primary} />
+          </View>
+          <View style={styles.actionContent}>
+            <Text style={styles.actionTitle}>Mis amigos</Text>
+            <Text style={styles.actionSubtitle}>
+              {socialStats.friendsCount} amigos conectados
+            </Text>
+          </View>
+          <CustomIcons.ChevronRight size={20} color="#9CA3AF" />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.actionCard}
+          onPress={() => navigation.navigate('SocialFeed')}
+          activeOpacity={0.8}
+        >
+          <View style={[styles.actionIcon, { backgroundColor: '#D1FAE5' }]}>
+            <CustomIcons.Heart size={20} color="#10B981" />
+          </View>
+          <View style={styles.actionContent}>
+            <Text style={styles.actionTitle}>Feed social</Text>
+            <Text style={styles.actionSubtitle}>Ver estados de amigos</Text>
+          </View>
+          <CustomIcons.ChevronRight size={20} color="#9CA3AF" />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.actionCard}
+          onPress={handleShareEmotion}
+          activeOpacity={0.8}
+        >
+          <View style={[styles.actionIcon, { backgroundColor: '#FEF3C7' }]}>
+            <CustomIcons.Share size={20} color="#F59E0B" />
+          </View>
+          <View style={styles.actionContent}>
+            <Text style={styles.actionTitle}>Compartir estado</Text>
+            <Text style={styles.actionSubtitle}>Comparte cómo te sientes</Text>
+          </View>
+          <CustomIcons.ChevronRight size={20} color="#9CA3AF" />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.actionCard}
+          onPress={() => navigation.navigate('SearchFriends')}
+          activeOpacity={0.8}
+        >
+          <View style={[styles.actionIcon, { backgroundColor: '#FEE2E2' }]}>
+            <CustomIcons.UserPlus size={20} color="#EF4444" />
+          </View>
+          <View style={styles.actionContent}>
+            <Text style={styles.actionTitle}>Agregar amigos</Text>
+            <Text style={styles.actionSubtitle}>Buscar nuevos contactos</Text>
+          </View>
+          <CustomIcons.ChevronRight size={20} color="#9CA3AF" />
+        </TouchableOpacity>
+      </View>
+    </Animated.View>
+  );
+
+  const renderSettingsTab = () => (
+    <Animated.View style={{ opacity: fadeAnim }}>
+      <View style={styles.section}>
+        <TouchableOpacity
+          style={styles.actionCard}
+          onPress={() => Alert.alert('Notificaciones', 'Próximamente')}
+          activeOpacity={0.8}
+        >
+          <View style={[styles.actionIcon, { backgroundColor: '#EBF5FB' }]}>
+            <CustomIcons.Bell size={20} color={COLORS.primary} />
+          </View>
+          <View style={styles.actionContent}>
+            <Text style={styles.actionTitle}>Notificaciones</Text>
+            <Text style={styles.actionSubtitle}>Recordatorios y alertas</Text>
+          </View>
+          <CustomIcons.ChevronRight size={20} color="#9CA3AF" />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.actionCard}
+          onPress={() => Alert.alert('Privacidad', 'Próximamente')}
+          activeOpacity={0.8}
+        >
+          <View style={[styles.actionIcon, { backgroundColor: '#FEF3C7' }]}>
+            <CustomIcons.Shield size={20} color="#F59E0B" />
+          </View>
+          <View style={styles.actionContent}>
+            <Text style={styles.actionTitle}>Privacidad</Text>
+            <Text style={styles.actionSubtitle}>Control de datos</Text>
+          </View>
+          <CustomIcons.ChevronRight size={20} color="#9CA3AF" />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.actionCard}
+          onPress={() => Alert.alert('Ayuda', 'Próximamente')}
+          activeOpacity={0.8}
+        >
+          <View style={[styles.actionIcon, { backgroundColor: '#E0E7FF' }]}>
+            <CustomIcons.HelpCircle size={20} color="#6366F1" />
+          </View>
+          <View style={styles.actionContent}>
+            <Text style={styles.actionTitle}>Ayuda y soporte</Text>
+            <Text style={styles.actionSubtitle}>Centro de ayuda</Text>
+          </View>
+          <CustomIcons.ChevronRight size={20} color="#9CA3AF" />
+        </TouchableOpacity>
+      </View>
+
+      {/* Info */}
+      <View style={styles.section}>
+        <View style={styles.infoCard}>
+          <View style={styles.infoRow}>
+            <Text style={styles.infoLabel}>Versión</Text>
+            <Text style={styles.infoValue}>1.0.0</Text>
+          </View>
+          <View style={styles.infoRow}>
+            <Text style={styles.infoLabel}>Cuenta desde</Text>
+            <Text style={styles.infoValue}>
+              {user?.metadata?.creationTime 
+                ? new Date(user.metadata.creationTime).toLocaleDateString('es-ES', {
+                    month: 'short',
+                    year: 'numeric'
+                  })
+                : 'Reciente'
+              }
+            </Text>
+          </View>
+        </View>
+      </View>
+
+      {/* Sign out */}
+      <View style={styles.section}>
+        <TouchableOpacity 
+          style={styles.signOutButton} 
+          onPress={handleSignOut}
+          activeOpacity={0.8}
+        >
+          <CustomIcons.LogOut size={18} color={COLORS.white} />
+          <Text style={styles.signOutButtonText}>Cerrar sesión</Text>
+        </TouchableOpacity>
+      </View>
+    </Animated.View>
+  );
+
+  return (
+    <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
+      
+      {/* Header con foto */}
+      <View style={styles.header}>
+        <View style={styles.headerContent}>
+          <AvatarPicker
+            user={userForAvatar}
+            onImageUpdate={handleImageUpdate}
+            size={80}
+            editable={true}
+            showName={false}
+          />
+          <View style={styles.headerInfo}>
+            <Text style={styles.headerName}>{userForAvatar.name}</Text>
+            <Text style={styles.headerEmail}>{user?.email}</Text>
+          </View>
+        </View>
+      </View>
+
+      {/* Tabs */}
+      <View style={styles.tabsContainer}>
+        <TouchableOpacity
+          style={[styles.tab, activeTab === 'overview' && styles.tabActive]}
+          onPress={() => setActiveTab('overview')}
+          activeOpacity={0.8}
+        >
+          <CustomIcons.Home size={18} color={activeTab === 'overview' ? COLORS.primary : '#9CA3AF'} />
+          <Text style={[styles.tabText, activeTab === 'overview' && styles.tabTextActive]}>
+            General
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.tab, activeTab === 'social' && styles.tabActive]}
+          onPress={() => setActiveTab('social')}
+          activeOpacity={0.8}
+        >
+          <CustomIcons.User size={18} color={activeTab === 'social' ? COLORS.primary : '#9CA3AF'} />
+          <Text style={[styles.tabText, activeTab === 'social' && styles.tabTextActive]}>
+            Social
+          </Text>
+          {socialStats.friendsCount > 0 && (
+            <View style={styles.tabBadge}>
+              <Text style={styles.tabBadgeText}>{socialStats.friendsCount}</Text>
+            </View>
+          )}
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.tab, activeTab === 'settings' && styles.tabActive]}
+          onPress={() => setActiveTab('settings')}
+          activeOpacity={0.8}
+        >
+          <CustomIcons.Settings size={18} color={activeTab === 'settings' ? COLORS.primary : '#9CA3AF'} />
+          <Text style={[styles.tabText, activeTab === 'settings' && styles.tabTextActive]}>
+            Ajustes
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Content */}
+      <ScrollView 
+        style={styles.content}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
+      >
+        {activeTab === 'overview' && renderOverviewTab()}
+        {activeTab === 'social' && renderSocialTab()}
+        {activeTab === 'settings' && renderSettingsTab()}
       </ScrollView>
     </SafeAreaView>
   );
@@ -739,415 +587,332 @@ const ProfileScreen = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: '#F5F5F5',
   },
-
+  
+  // Loading
   loadingContainer: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: '#F5F5F5',
     justifyContent: 'center',
     alignItems: 'center',
   },
   loadingContent: {
     alignItems: 'center',
   },
+  loadingCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: COLORS.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
   loadingText: {
-    marginTop: Theme.spacing.md,
-    fontSize: Theme.typography.body,
-    color: COLORS.textSecondary,
+    fontSize: 14,
+    color: '#6B7280',
     fontWeight: '500',
   },
   
   // Header
   header: {
     backgroundColor: COLORS.white,
-    paddingHorizontal: Theme.spacing.lg,
-    paddingVertical: Theme.spacing.md,
+    paddingTop: Platform.OS === 'ios' ? 10 : 60,
+    paddingBottom: 20,
+    paddingHorizontal: 20,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.borderLight,
+    borderBottomColor: '#E5E7EB',
+  },
+  headerContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.1,
-        shadowRadius: 3,
-      },
-      android: {
-        elevation: 3,
-      },
-    }),
-  },
-  backButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: COLORS.gray50,
-    marginRight: Theme.spacing.md,
+    gap: 16,
   },
   headerInfo: {
     flex: 1,
   },
-  headerTitle: {
-    fontSize: 18,
+  headerName: {
+    fontSize: 20,
     fontWeight: '700',
-    color: COLORS.text,
-    marginBottom: 2,
+    color: '#1A1A1A',
+    marginBottom: 4,
   },
-  headerSubtitle: {
-    fontSize: 12,
-    color: COLORS.textSecondary,
-  },
-  headerAction: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: COLORS.gray50,
+  headerEmail: {
+    fontSize: 13,
+    color: '#6B7280',
   },
   
-  // Sections
-  section: {
-    marginHorizontal: Theme.spacing.xl,
-    marginBottom: Theme.spacing.xxxl,
-  },
-  sectionHeader: {
+  // Tabs
+  tabsContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    backgroundColor: COLORS.white,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+    gap: 8,
+  },
+  tab: {
+    flex: 1,
+    flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: Theme.spacing.lg,
+    justifyContent: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    gap: 6,
+    backgroundColor: 'transparent',
+    position: 'relative',
   },
-  sectionTitle: {
-    fontSize: Theme.typography.h4,
-    fontWeight: '600',
-    color: COLORS.text,
+  tabActive: {
+    backgroundColor: '#EBF5FB',
   },
-  viewMoreButton: {
-    backgroundColor: COLORS.blue50,
-    paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.sm,
-    borderRadius: Theme.borderRadius.medium,
-  },
-  viewMoreText: {
-    fontSize: Theme.typography.caption,
-    color: COLORS.primary,
+  tabText: {
+    fontSize: 13,
+    color: '#9CA3AF',
     fontWeight: '500',
   },
-  
-  // Profile
-  profileSection: {
-    marginHorizontal: Theme.spacing.xl,
-    marginBottom: Theme.spacing.xxxl,
+  tabTextActive: {
+    color: COLORS.primary,
+    fontWeight: '700',
   },
-  profileCard: {
-    backgroundColor: COLORS.white,
-    borderRadius: Theme.borderRadius.large,
-    padding: Theme.spacing.xxxl,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    ...Theme.shadows.small,
-  },
-  
-  // Badges
-  badgesSection: {
-    flexDirection: 'row',
-    gap: Theme.spacing.sm,
-    flexWrap: 'wrap',
+  tabBadge: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    backgroundColor: '#EF4444',
+    borderRadius: 8,
+    minWidth: 16,
+    height: 16,
     justifyContent: 'center',
-    marginTop: Theme.spacing.lg,
-  },
-  badge: {
-    flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.sm,
-    borderRadius: Theme.borderRadius.full,
-    gap: 4,
+    paddingHorizontal: 4,
   },
-  badgeEmoji: {
-    fontSize: 12,
+  tabBadgeText: {
+    color: COLORS.white,
+    fontSize: 10,
+    fontWeight: '700',
   },
-  badgeText: {
-    fontSize: Theme.typography.small,
-    fontWeight: '600',
+  
+  // Content
+  content: {
+    flex: 1,
+  },
+  scrollContent: {
+    padding: 16,
+    paddingBottom: 100,
+  },
+  
+  // Section
+  section: {
+    marginBottom: 24,
+  },
+  sectionTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#1A1A1A',
+    marginBottom: 12,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   
   // Stats
+  statsSection: {
+    marginBottom: 24,
+  },
   statsGrid: {
     flexDirection: 'row',
-    gap: Theme.spacing.md,
-    marginBottom: Theme.spacing.lg,
+    gap: 12,
   },
   statCard: {
     flex: 1,
     backgroundColor: COLORS.white,
-    padding: Theme.spacing.lg,
-    borderRadius: Theme.borderRadius.large,
+    padding: 16,
+    borderRadius: 16,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: COLORS.border,
-    ...Theme.shadows.small,
+    borderColor: '#E5E7EB',
   },
-  statIconContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: COLORS.blue50,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: Theme.spacing.md,
-  },
-  statIcon: {
-    fontSize: 18,
+  statCardHighlight: {
+    borderColor: COLORS.primary,
+    borderWidth: 2,
   },
   statNumber: {
-    fontSize: Theme.typography.h3,
+    fontSize: 24,
     fontWeight: '700',
-    color: COLORS.text,
-    marginBottom: Theme.spacing.xs,
-  },
-  statLabel: {
-    fontSize: Theme.typography.small,
-    color: COLORS.textSecondary,
-    textAlign: 'center',
-    fontWeight: '500',
-  },
-
-  // Social Stats
-  socialStatsGrid: {
-    flexDirection: 'row',
-    gap: Theme.spacing.md,
-    marginBottom: Theme.spacing.lg,
-  },
-  socialStatCard: {
-    flex: 1,
-    backgroundColor: COLORS.blue50,
-    padding: Theme.spacing.md,
-    borderRadius: Theme.borderRadius.medium,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: COLORS.blue200,
-  },
-  socialStatNumber: {
-    fontSize: Theme.typography.h4,
-    fontWeight: '700',
-    color: COLORS.blue600,
+    color: '#1A1A1A',
     marginBottom: 4,
   },
-  socialStatLabel: {
-    fontSize: Theme.typography.small,
-    color: COLORS.blue600,
-    textAlign: 'center',
+  statLabel: {
+    fontSize: 11,
+    color: '#6B7280',
+    fontWeight: '500',
   },
   
-  // Motivation card
-  motivationCard: {
-    backgroundColor: COLORS.white,
-    padding: Theme.spacing.lg,
-    borderRadius: Theme.borderRadius.large,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    alignItems: 'center',
-    ...Theme.shadows.small,
-  },
-  motivationText: {
-    fontSize: Theme.typography.h5,
-    fontWeight: '600',
-    color: COLORS.primary,
-    textAlign: 'center',
-    marginBottom: Theme.spacing.sm,
-  },
-  trendText: {
-    fontSize: Theme.typography.caption,
-    color: COLORS.textSecondary,
-    textAlign: 'center',
-  },
-  
-  // Quick Navigation
-  quickNavGrid: {
+  // Quick grid
+  quickGrid: {
     flexDirection: 'row',
-    gap: Theme.spacing.lg,
+    flexWrap: 'wrap',
+    gap: 12,
   },
-  quickNavItem: {
-    flex: 1,
+  quickCard: {
+    width: '48%',
     backgroundColor: COLORS.white,
-    padding: Theme.spacing.lg,
-    borderRadius: Theme.borderRadius.large,
+    padding: 16,
+    borderRadius: 16,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: COLORS.border,
-    ...Theme.shadows.small,
-    position: 'relative',
+    borderColor: '#E5E7EB',
   },
-  quickNavIcon: {
+  quickIcon: {
     width: 48,
     height: 48,
     borderRadius: 24,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: Theme.spacing.md,
+    marginBottom: 8,
   },
-  quickNavText: {
-    fontSize: Theme.typography.caption,
-    color: COLORS.text,
-    fontWeight: '600',
-  },
-  quickNavBadge: {
-    position: 'absolute',
-    top: -4,
-    right: -4,
-    backgroundColor: COLORS.error,
-    borderRadius: 10,
-    minWidth: 20,
-    height: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  quickNavBadgeText: {
-    color: COLORS.white,
-    fontSize: 10,
+  quickLabel: {
+    fontSize: 13,
+    color: '#1A1A1A',
     fontWeight: '600',
   },
   
-  // Menu
-  menuContainer: {
-    backgroundColor: COLORS.white,
-    borderRadius: Theme.borderRadius.large,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    ...Theme.shadows.small,
-  },
-  menuItem: {
+  // Badges
+  badgesGrid: {
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: Theme.spacing.lg,
+    gap: 12,
   },
-  menuItemLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  badgeCard: {
     flex: 1,
+    backgroundColor: COLORS.white,
+    padding: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
   },
-  menuItemRight: {
+  badgeEmoji: {
+    fontSize: 24,
+    marginBottom: 4,
+  },
+  badgeLabel: {
+    fontSize: 11,
+    color: '#6B7280',
+    fontWeight: '600',
+  },
+  
+  // Social stats
+  socialStatsSection: {
+    marginBottom: 24,
+  },
+  socialStatsGrid: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  socialStatCard: {
+    flex: 1,
+    backgroundColor: COLORS.white,
+    padding: 16,
+    borderRadius: 16,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  socialStatNumber: {
+    fontSize: 28,
+    fontWeight: '700',
+    color: COLORS.primary,
+    marginBottom: 4,
+  },
+  socialStatLabel: {
+    fontSize: 11,
+    color: '#6B7280',
+    fontWeight: '500',
+    marginBottom: 4,
+  },
+  
+  // Action card
+  actionCard: {
     flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: COLORS.white,
+    padding: 16,
+    borderRadius: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
   },
-  menuIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+  actionIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: Theme.spacing.lg,
+    marginRight: 12,
   },
-  menuItemInfo: {
+  actionContent: {
     flex: 1,
   },
-  menuItemTitle: {
-    fontSize: Theme.typography.body,
-    color: COLORS.text,
-    fontWeight: '500',
-    marginBottom: Theme.spacing.xs,
-  },
-  menuItemSubtitle: {
-    fontSize: Theme.typography.small,
-    color: COLORS.textMuted,
-  },
-  menuDivider: {
-    height: 1,
-    backgroundColor: COLORS.borderLight,
-    marginHorizontal: Theme.spacing.lg,
-  },
-  menuBadge: {
-    backgroundColor: COLORS.primary,
-    borderRadius: 12,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    marginRight: 8,
-  },
-  menuBadgeText: {
-    color: COLORS.white,
-    fontSize: 10,
+  actionTitle: {
+    fontSize: 15,
     fontWeight: '600',
+    color: '#1A1A1A',
+    marginBottom: 2,
+  },
+  actionSubtitle: {
+    fontSize: 12,
+    color: '#9CA3AF',
   },
   
   // Info card
   infoCard: {
     backgroundColor: COLORS.white,
-    borderRadius: Theme.borderRadius.large,
-    padding: Theme.spacing.lg,
+    borderRadius: 16,
+    padding: 16,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    ...Theme.shadows.small,
+    borderColor: '#E5E7EB',
   },
   infoRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: Theme.spacing.md,
+    paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.borderLight,
+    borderBottomColor: '#F3F4F6',
   },
   infoLabel: {
-    fontSize: Theme.typography.body,
-    color: COLORS.textSecondary,
+    fontSize: 14,
+    color: '#6B7280',
     fontWeight: '500',
   },
   infoValue: {
-    fontSize: Theme.typography.body,
-    color: COLORS.text,
+    fontSize: 14,
+    color: '#1A1A1A',
     fontWeight: '600',
-  },
-  infoValueSmall: {
-    fontSize: Theme.typography.caption,
-    fontFamily: 'monospace',
   },
   
   // Sign out
   signOutButton: {
-    backgroundColor: COLORS.error,
-    paddingVertical: Theme.spacing.lg,
-    paddingHorizontal: Theme.spacing.xl,
-    borderRadius: Theme.borderRadius.medium,
+    backgroundColor: '#EF4444',
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderRadius: 16,
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'center',
     gap: 8,
-    ...Theme.shadows.small,
+    shadowColor: '#EF4444',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
   },
   signOutButtonText: {
     color: COLORS.white,
-    fontSize: Theme.typography.h5,
-    fontWeight: '600',
-  },
-  
-  // Footer
-  footer: {
-    alignItems: 'center',
-    paddingVertical: Theme.spacing.xxxl,
-    paddingHorizontal: Theme.spacing.xl,
-  },
-  footerText: {
-    fontSize: Theme.typography.caption,
-    color: COLORS.textMuted,
-    fontWeight: '500',
-    marginBottom: Theme.spacing.xs,
-  },
-  footerSubtext: {
-    fontSize: Theme.typography.small,
-    color: COLORS.textMuted,
-    marginBottom: Theme.spacing.sm,
-  },
-  footerNote: {
-    fontSize: Theme.typography.small,
-    color: COLORS.textMuted,
-    textAlign: 'center',
-    fontStyle: 'italic',
+    fontSize: 15,
+    fontWeight: '700',
   },
 });
 

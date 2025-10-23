@@ -1,4 +1,4 @@
-// src/screens/SearchFriendsScreen.js - Buscar y agregar amigos
+// src/screens/SearchFriendsScreen.js - Rediseño moderno
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -11,9 +11,11 @@ import {
   SafeAreaView,
   StatusBar,
   Keyboard,
+  Platform,
+  Animated,
 } from 'react-native';
 import auth from '@react-native-firebase/auth';
-import { COLORS, Theme } from '../constants/colors';
+import { COLORS } from '../constants/colors';
 import CustomIcons from '../components/CustomIcons';
 import SocialService from '../services/SocialService';
 
@@ -23,10 +25,14 @@ const SearchFriendsScreen = ({ navigation }) => {
   const [suggestions, setSuggestions] = useState([]);
   const [loading, setLoading] = useState(false);
   const [user, setUser] = useState(null);
+  const [fadeAnim] = useState(new Animated.Value(0));
 
   useEffect(() => {
     StatusBar.setBarStyle('dark-content');
-    StatusBar.setBackgroundColor(COLORS.white);
+    if (Platform.OS === 'android') {
+      StatusBar.setBackgroundColor('transparent');
+      StatusBar.setTranslucent(true);
+    }
     
     const currentUser = auth().currentUser;
     setUser(currentUser);
@@ -34,6 +40,12 @@ const SearchFriendsScreen = ({ navigation }) => {
     if (currentUser) {
       loadSuggestions(currentUser.uid);
     }
+
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 600,
+      useNativeDriver: true,
+    }).start();
   }, []);
 
   const loadSuggestions = async (userId) => {
@@ -57,12 +69,12 @@ const SearchFriendsScreen = ({ navigation }) => {
       
       if (results.length === 0) {
         Alert.alert(
-          '🔍 Sin resultados', 
+          'Sin resultados', 
           'No se encontraron usuarios con ese email o nombre.'
         );
       }
     } catch (error) {
-      Alert.alert('❌ Error', 'Error al buscar usuarios');
+      Alert.alert('Error', 'Error al buscar usuarios');
     } finally {
       setLoading(false);
     }
@@ -70,20 +82,22 @@ const SearchFriendsScreen = ({ navigation }) => {
 
   const handleSendFriendRequest = async (targetUser) => {
     try {
-      // Verificar estado de amistad primero
-      const friendshipStatus = await SocialService.checkFriendshipStatus(user.uid, targetUser.id);
+      const friendshipStatus = await SocialService.checkFriendshipStatus(
+        user.uid, 
+        targetUser.id
+      );
       
       if (friendshipStatus.status === 'friends') {
-        Alert.alert('👥 Ya son amigos', 'Ya eres amigo de esta persona');
+        Alert.alert('Ya son amigos', 'Ya eres amigo de esta persona');
         return;
       }
       
       if (friendshipStatus.status === 'pending') {
         Alert.alert(
-          '⏳ Solicitud pendiente', 
+          'Solicitud pendiente', 
           friendshipStatus.direction === 'sent' 
             ? 'Ya enviaste una solicitud a esta persona'
-            : 'Esta persona ya te envió una solicitud. Revisa tus solicitudes pendientes.'
+            : 'Esta persona ya te envió una solicitud.'
         );
         return;
       }
@@ -91,11 +105,10 @@ const SearchFriendsScreen = ({ navigation }) => {
       await SocialService.sendFriendRequest(user.uid, targetUser.id);
       
       Alert.alert(
-        '✅ Solicitud enviada',
-        `Se envió la solicitud de amistad a ${targetUser.name}`
+        '¡Enviado!',
+        `Solicitud enviada a ${targetUser.name}`
       );
       
-      // Actualizar resultados para mostrar el estado
       setSearchResults(prev => 
         prev.map(u => 
           u.id === targetUser.id 
@@ -105,59 +118,121 @@ const SearchFriendsScreen = ({ navigation }) => {
       );
       
     } catch (error) {
-      Alert.alert('❌ Error', error.message || 'No se pudo enviar la solicitud');
+      Alert.alert('Error', error.message || 'No se pudo enviar la solicitud');
     }
   };
 
-  const renderUserItem = ({ item: user, showSuggestion = false }) => (
-    <View style={styles.userCard}>
-      <View style={styles.userInfo}>
-        <View style={styles.userAvatar}>
+  const getInitials = (name) => {
+    if (!name) return '?';
+    const parts = name.split(' ');
+    if (parts.length >= 2) {
+      return (parts[0][0] + parts[1][0]).toUpperCase();
+    }
+    return name.substring(0, 2).toUpperCase();
+  };
+
+  const getAvatarColor = (name) => {
+    const colors = [
+      '#7DB9DE', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899'
+    ];
+    const index = name ? name.charCodeAt(0) % colors.length : 0;
+    return colors[index];
+  };
+
+  const renderUserItem = ({ item: targetUser, showSuggestion = false }) => (
+    <Animated.View style={[styles.userCard, { opacity: fadeAnim }]}>
+      <View style={styles.userLeft}>
+        <View style={[
+          styles.userAvatar,
+          { backgroundColor: getAvatarColor(targetUser.name) }
+        ]}>
           <Text style={styles.userInitials}>
-            {user.name?.charAt(0).toUpperCase() || '?'}
+            {getInitials(targetUser.name)}
           </Text>
         </View>
-        <View style={styles.userDetails}>
-          <Text style={styles.userName}>{user.name || 'Usuario'}</Text>
-          <Text style={styles.userEmail}>{user.email}</Text>
+        
+        <View style={styles.userInfo}>
+          <View style={styles.userNameRow}>
+            <Text style={styles.userName}>{targetUser.name || 'Usuario'}</Text>
+            {targetUser.isVerified && (
+              <View style={styles.verifiedBadge}>
+                <CustomIcons.Check size={10} color={COLORS.white} />
+              </View>
+            )}
+          </View>
+          <Text style={styles.userEmail} numberOfLines={1}>
+            {targetUser.email}
+          </Text>
           {showSuggestion && (
-            <Text style={styles.suggestionText}>Sugerencia</Text>
-          )}
-          {user.requestSent && (
-            <Text style={styles.requestSentText}>✅ Solicitud enviada</Text>
+            <View style={styles.suggestionBadge}>
+              <Text style={styles.suggestionText}>💡 Sugerencia</Text>
+            </View>
           )}
         </View>
       </View>
       
-      {!user.requestSent && (
+      {targetUser.requestSent ? (
+        <View style={styles.sentBadge}>
+          <CustomIcons.Check size={14} color="#10B981" />
+          <Text style={styles.sentText}>Enviado</Text>
+        </View>
+      ) : (
         <TouchableOpacity
           style={styles.addButton}
-          onPress={() => handleSendFriendRequest(user)}
+          onPress={() => handleSendFriendRequest(targetUser)}
           activeOpacity={0.8}
         >
-          <CustomIcons.Plus size={16} color={COLORS.white} />
-          <Text style={styles.addButtonText}>Agregar</Text>
+          <CustomIcons.UserPlus size={18} color={COLORS.white} />
         </TouchableOpacity>
       )}
-    </View>
+    </Animated.View>
   );
 
   const renderEmptySearch = () => (
     <View style={styles.emptyState}>
-      <Text style={styles.emptyIcon}>🔍</Text>
-      <Text style={styles.emptyTitle}>Busca amigos</Text>
+      <View style={styles.emptyIcon}>
+        <CustomIcons.Search size={48} color="#D1D5DB" />
+      </View>
+      <Text style={styles.emptyTitle}>Sin resultados</Text>
       <Text style={styles.emptySubtitle}>
-        Ingresa el email o nombre de la persona que quieres agregar como amigo
+        No se encontraron usuarios con "{searchTerm}"
       </Text>
+      <TouchableOpacity
+        style={styles.clearButton}
+        onPress={() => {
+          setSearchTerm('');
+          setSearchResults([]);
+        }}
+        activeOpacity={0.8}
+      >
+        <Text style={styles.clearButtonText}>Limpiar búsqueda</Text>
+      </TouchableOpacity>
     </View>
   );
 
   const renderSuggestions = () => {
-    if (suggestions.length === 0) return null;
+    if (suggestions.length === 0) {
+      return (
+        <View style={styles.emptyState}>
+          <View style={styles.emptyIcon}>
+            <CustomIcons.User size={48} color="#D1D5DB" />
+          </View>
+          <Text style={styles.emptyTitle}>Sin sugerencias</Text>
+          <Text style={styles.emptySubtitle}>
+            Por ahora no hay sugerencias de amigos disponibles
+          </Text>
+        </View>
+      );
+    }
     
     return (
       <View style={styles.suggestionsSection}>
-        <Text style={styles.sectionTitle}>💡 Sugerencias para ti</Text>
+        <View style={styles.sectionHeader}>
+          <View style={styles.sectionIconWrapper}>
+            <CustomIcons.Star size={16} color="#F59E0B" />
+          </View>
+          <Text style={styles.sectionTitle}>Sugerencias para ti</Text>
+        </View>
         <FlatList
           data={suggestions}
           renderItem={({ item }) => renderUserItem({ item, showSuggestion: true })}
@@ -170,6 +245,8 @@ const SearchFriendsScreen = ({ navigation }) => {
 
   return (
     <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
+      
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity
@@ -177,65 +254,78 @@ const SearchFriendsScreen = ({ navigation }) => {
           onPress={() => navigation.goBack()}
           activeOpacity={0.7}
         >
-          <CustomIcons.ArrowLeft size={20} color={COLORS.text} />
+          <CustomIcons.ArrowLeft size={22} color={COLORS.text} />
         </TouchableOpacity>
         
         <View style={styles.headerInfo}>
-          <Text style={styles.headerTitle}>Agregar amigos</Text>
-          <Text style={styles.headerSubtitle}>Busca por email o nombre</Text>
+          <Text style={styles.headerTitle}>Buscar Amigos</Text>
+          <Text style={styles.headerSubtitle}>
+            {searchResults.length > 0 
+              ? `${searchResults.length} resultado${searchResults.length > 1 ? 's' : ''}`
+              : 'Email o nombre'
+            }
+          </Text>
         </View>
       </View>
 
-      {/* Search Section */}
+      {/* Search Bar */}
       <View style={styles.searchSection}>
-        <View style={styles.searchContainer}>
-          <View style={styles.searchInputContainer}>
-            <CustomIcons.Search size={20} color={COLORS.textMuted} />
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Buscar por email o nombre..."
-              value={searchTerm}
-              onChangeText={setSearchTerm}
-              onSubmitEditing={handleSearch}
-              autoCapitalize="none"
-              autoCorrect={false}
-              returnKeyType="search"
-            />
-            {searchTerm.length > 0 && (
-              <TouchableOpacity
-                onPress={() => {
-                  setSearchTerm('');
-                  setSearchResults([]);
-                }}
-                activeOpacity={0.7}
-              >
-                <CustomIcons.X size={20} color={COLORS.textMuted} />
-              </TouchableOpacity>
-            )}
-          </View>
-          
-          <TouchableOpacity
-            style={[styles.searchButton, (!searchTerm.trim() || loading) && styles.searchButtonDisabled]}
-            onPress={handleSearch}
-            disabled={!searchTerm.trim() || loading}
-            activeOpacity={0.8}
-          >
-            {loading ? (
-              <Text style={styles.searchButtonText}>...</Text>
-            ) : (
-              <CustomIcons.Search size={16} color={COLORS.white} />
-            )}
-          </TouchableOpacity>
+        <View style={styles.searchWrapper}>
+          <CustomIcons.Search size={18} color="#9CA3AF" />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Buscar por email o nombre..."
+            value={searchTerm}
+            onChangeText={setSearchTerm}
+            onSubmitEditing={handleSearch}
+            autoCapitalize="none"
+            autoCorrect={false}
+            returnKeyType="search"
+            placeholderTextColor="#9CA3AF"
+          />
+          {searchTerm.length > 0 && (
+            <TouchableOpacity
+              onPress={() => {
+                setSearchTerm('');
+                setSearchResults([]);
+              }}
+              activeOpacity={0.7}
+              style={styles.clearIcon}
+            >
+              <CustomIcons.X size={18} color="#9CA3AF" />
+            </TouchableOpacity>
+          )}
         </View>
+        
+        <TouchableOpacity
+          style={[
+            styles.searchButton, 
+            (!searchTerm.trim() || loading) && styles.searchButtonDisabled
+          ]}
+          onPress={handleSearch}
+          disabled={!searchTerm.trim() || loading}
+          activeOpacity={0.8}
+        >
+          {loading ? (
+            <CustomIcons.Loading size={18} color={COLORS.white} />
+          ) : (
+            <CustomIcons.Search size={18} color={COLORS.white} />
+          )}
+        </TouchableOpacity>
       </View>
 
       {/* Content */}
       <View style={styles.content}>
         {searchResults.length > 0 ? (
           <View style={styles.resultsSection}>
-            <Text style={styles.sectionTitle}>
-              🎯 Resultados ({searchResults.length})
-            </Text>
+            <View style={styles.sectionHeader}>
+              <View style={styles.sectionIconWrapper}>
+                <CustomIcons.User size={16} color={COLORS.primary} />
+              </View>
+              <Text style={styles.sectionTitle}>
+                Resultados ({searchResults.length})
+              </Text>
+            </View>
             <FlatList
               data={searchResults}
               renderItem={renderUserItem}
@@ -251,14 +341,19 @@ const SearchFriendsScreen = ({ navigation }) => {
         )}
       </View>
 
-      {/* Help Section */}
-      <View style={styles.helpSection}>
-        <View style={styles.helpCard}>
-          <Text style={styles.helpTitle}>💡 Consejos para encontrar amigos</Text>
-          <Text style={styles.helpText}>
-            • Busca por email exacto para mejores resultados{'\n'}
-            • También puedes buscar por nombre completo{'\n'}
-            • Pide a tus amigos que se registren en Tranki
+      {/* Tips Card */}
+      <View style={styles.tipsSection}>
+        <View style={styles.tipsCard}>
+          <View style={styles.tipsHeader}>
+            <View style={styles.tipsIconWrapper}>
+              <CustomIcons.Info size={16} color={COLORS.primary} />
+            </View>
+            <Text style={styles.tipsTitle}>Consejos para buscar</Text>
+          </View>
+          <Text style={styles.tipsText}>
+            • Busca por email exacto{'\n'}
+            • También funciona con nombre completo{'\n'}
+            • Invita amigos a registrarse en Tranki
           </Text>
         </View>
       </View>
@@ -269,108 +364,127 @@ const SearchFriendsScreen = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: '#F5F5F5',
   },
   
   // Header
   header: {
     backgroundColor: COLORS.white,
-    paddingHorizontal: Theme.spacing.lg,
-    paddingVertical: Theme.spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.borderLight,
+    paddingTop: Platform.OS === 'ios' ? 10 : 60,
+    paddingBottom: 16,
+    paddingHorizontal: 16,
     flexDirection: 'row',
     alignItems: 'center',
-    ...Theme.shadows.small,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+    elevation: 3,
   },
   backButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: COLORS.gray50,
-    marginRight: Theme.spacing.md,
+    backgroundColor: '#F9FAFB',
+    marginRight: 12,
   },
   headerInfo: {
     flex: 1,
   },
   headerTitle: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '700',
-    color: COLORS.text,
+    color: '#1A1A1A',
     marginBottom: 2,
   },
   headerSubtitle: {
     fontSize: 12,
-    color: COLORS.textSecondary,
+    color: '#6B7280',
   },
   
   // Search
   searchSection: {
     backgroundColor: COLORS.white,
-    padding: Theme.spacing.lg,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.borderLight,
-  },
-  searchContainer: {
+    padding: 16,
     flexDirection: 'row',
-    gap: Theme.spacing.md,
+    gap: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
   },
-  searchInputContainer: {
+  searchWrapper: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.gray50,
-    borderRadius: Theme.borderRadius.medium,
-    paddingHorizontal: Theme.spacing.md,
-    gap: 8,
+    backgroundColor: '#F9FAFB',
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    gap: 10,
   },
   searchInput: {
     flex: 1,
-    paddingVertical: Theme.spacing.md,
-    fontSize: Theme.typography.body,
-    color: COLORS.text,
+    fontSize: 15,
+    color: '#1A1A1A',
+  },
+  clearIcon: {
+    padding: 4,
   },
   searchButton: {
-    backgroundColor: COLORS.primary,
     width: 48,
     height: 48,
-    borderRadius: Theme.borderRadius.medium,
+    borderRadius: 16,
     justifyContent: 'center',
     alignItems: 'center',
-    ...Theme.shadows.blue,
+    backgroundColor: COLORS.primary,
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 4,
   },
   searchButtonDisabled: {
-    backgroundColor: COLORS.gray400,
-    ...Theme.shadows.none,
-  },
-  searchButtonText: {
-    color: COLORS.white,
-    fontSize: Theme.typography.body,
-    fontWeight: '600',
+    backgroundColor: '#D1D5DB',
+    shadowOpacity: 0,
+    elevation: 0,
   },
   
   // Content
   content: {
     flex: 1,
-    padding: Theme.spacing.lg,
+    padding: 16,
   },
   
-  // Sections
-  sectionTitle: {
-    fontSize: Theme.typography.h5,
-    fontWeight: '600',
-    color: COLORS.text,
-    marginBottom: Theme.spacing.lg,
-  },
-  
-  // Results
+  // Section
   resultsSection: {
     flex: 1,
   },
   suggestionsSection: {
     flex: 1,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+    gap: 8,
+  },
+  sectionIconWrapper: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#EBF5FB',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  sectionTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#1A1A1A',
   },
   listContainer: {
     flexGrow: 1,
@@ -379,72 +493,107 @@ const styles = StyleSheet.create({
   // User Card
   userCard: {
     backgroundColor: COLORS.white,
-    borderRadius: Theme.borderRadius.large,
-    padding: Theme.spacing.lg,
-    marginBottom: Theme.spacing.md,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 12,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     borderWidth: 1,
-    borderColor: COLORS.border,
-    ...Theme.shadows.small,
+    borderColor: '#E5E7EB',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
   },
-  userInfo: {
+  userLeft: {
     flexDirection: 'row',
     alignItems: 'center',
     flex: 1,
   },
   userAvatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: COLORS.primary,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: Theme.spacing.md,
+    marginRight: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
   },
   userInitials: {
     color: COLORS.white,
     fontSize: 18,
-    fontWeight: '600',
+    fontWeight: '700',
   },
-  userDetails: {
+  userInfo: {
     flex: 1,
   },
-  userName: {
-    fontSize: Theme.typography.h5,
-    fontWeight: '600',
-    color: COLORS.text,
-    marginBottom: 2,
-  },
-  userEmail: {
-    fontSize: Theme.typography.caption,
-    color: COLORS.textMuted,
-    marginBottom: 2,
-  },
-  suggestionText: {
-    fontSize: Theme.typography.small,
-    color: COLORS.warning,
-    fontWeight: '500',
-    fontStyle: 'italic',
-  },
-  requestSentText: {
-    fontSize: Theme.typography.small,
-    color: COLORS.success,
-    fontWeight: '500',
-  },
-  addButton: {
-    backgroundColor: COLORS.primary,
-    paddingVertical: Theme.spacing.sm,
-    paddingHorizontal: Theme.spacing.md,
-    borderRadius: Theme.borderRadius.medium,
+  userNameRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    marginBottom: 4,
     gap: 6,
   },
-  addButtonText: {
-    color: COLORS.white,
-    fontSize: Theme.typography.caption,
+  userName: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#1A1A1A',
+  },
+  verifiedBadge: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: COLORS.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  userEmail: {
+    fontSize: 12,
+    color: '#9CA3AF',
+    marginBottom: 4,
+  },
+  suggestionBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  suggestionText: {
+    fontSize: 11,
+    color: '#92400E',
+    fontWeight: '600',
+  },
+  addButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: COLORS.primary,
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  sentBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#D1FAE5',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+    gap: 4,
+  },
+  sentText: {
+    fontSize: 12,
+    color: '#065F46',
     fontWeight: '600',
   },
   
@@ -453,47 +602,80 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: Theme.spacing.xl,
+    paddingHorizontal: 32,
+    paddingVertical: 60,
   },
   emptyIcon: {
-    fontSize: 64,
-    marginBottom: Theme.spacing.lg,
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#F3F4F6',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 24,
   },
   emptyTitle: {
-    fontSize: Theme.typography.h3,
-    fontWeight: '600',
-    color: COLORS.text,
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1A1A1A',
     textAlign: 'center',
-    marginBottom: Theme.spacing.sm,
+    marginBottom: 8,
   },
   emptySubtitle: {
-    fontSize: Theme.typography.body,
-    color: COLORS.textSecondary,
+    fontSize: 14,
+    color: '#6B7280',
     textAlign: 'center',
     lineHeight: 20,
+    marginBottom: 24,
+  },
+  clearButton: {
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 12,
+  },
+  clearButtonText: {
+    color: COLORS.white,
+    fontSize: 14,
+    fontWeight: '600',
   },
   
-  // Help Section
-  helpSection: {
-    padding: Theme.spacing.lg,
+  // Tips
+  tipsSection: {
+    padding: 16,
   },
-  helpCard: {
-    backgroundColor: COLORS.blue50,
-    padding: Theme.spacing.lg,
-    borderRadius: Theme.borderRadius.large,
+  tipsCard: {
+    backgroundColor: COLORS.white,
+    borderRadius: 16,
+    padding: 16,
     borderWidth: 1,
-    borderColor: COLORS.blue200,
+    borderColor: '#E5E7EB',
+    borderLeftWidth: 4,
+    borderLeftColor: COLORS.primary,
   },
-  helpTitle: {
-    fontSize: Theme.typography.body,
-    fontWeight: '600',
-    color: COLORS.blue600,
-    marginBottom: Theme.spacing.sm,
+  tipsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+    gap: 8,
   },
-  helpText: {
-    fontSize: Theme.typography.caption,
-    color: COLORS.blue600,
-    lineHeight: 16,
+  tipsIconWrapper: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#EBF5FB',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  tipsTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#1A1A1A',
+  },
+  tipsText: {
+    fontSize: 13,
+    color: '#6B7280',
+    lineHeight: 20,
   },
 });
 

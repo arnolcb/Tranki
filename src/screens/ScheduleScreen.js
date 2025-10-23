@@ -1,4 +1,4 @@
-// src/screens/ScheduleScreen.js - UI/UX Mejorada SIN notificaciones push
+// src/screens/ScheduleScreen.js - Rediseño SÚPER útil y simple
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -9,13 +9,13 @@ import {
   TextInput,
   Alert,
   Modal,
-  ActivityIndicator,
   SafeAreaView,
   StatusBar,
   Platform,
+  Animated,
 } from 'react-native';
 import auth from '@react-native-firebase/auth';
-import { COLORS, Theme } from '../constants/colors';
+import { COLORS } from '../constants/colors';
 import CustomIcons from '../components/CustomIcons';
 import FirebaseService from '../services/firebase';
 
@@ -23,24 +23,43 @@ const ScheduleScreen = ({ navigation }) => {
   const [schedule, setSchedule] = useState({});
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedDay, setSelectedDay] = useState('');
-  const [newEvent, setNewEvent] = useState({ title: '', startTime: '', endTime: '', type: 'class' });
+  const [selectedTime, setSelectedTime] = useState('');
+  const [newEvent, setNewEvent] = useState({ title: '', type: 'class', duration: 60 });
   const [loading, setLoading] = useState(true);
-  const [sleepAnalysis, setSleepAnalysis] = useState(null);
+  const [viewMode, setViewMode] = useState('week'); // 'week' o 'day'
+  const [currentDay, setCurrentDay] = useState(new Date().toLocaleDateString('es-ES', { weekday: 'long' }));
+  const [fadeAnim] = useState(new Animated.Value(0));
 
   const days = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
   
   const eventTypes = {
-    class: { label: 'Clase', icon: '📚', color: COLORS.primary },
-    work: { label: 'Trabajo', icon: '💼', color: COLORS.warning },
-    meeting: { label: 'Reunión', icon: '👥', color: COLORS.error },
-    personal: { label: 'Personal', icon: '⭐', color: COLORS.success },
-    sleep: { label: 'Dormir', icon: '😴', color: COLORS.purple || '#8B5CF6' }
+    class: { label: 'Clase', color: '#7DB9DE', emoji: '📚' },
+    work: { label: 'Trabajo', color: '#F59E0B', emoji: '💼' },
+    study: { label: 'Estudiar', color: '#8B5CF6', emoji: '📖' },
+    break: { label: 'Descanso', color: '#10B981', emoji: '☕' },
+    sleep: { label: 'Dormir', color: '#6366F1', emoji: '😴' },
+    gym: { label: 'Ejercicio', color: '#EF4444', emoji: '💪' },
   };
+
+  const timeSlots = Array.from({ length: 17 }, (_, i) => {
+    const hour = i + 6; // 6 AM a 10 PM
+    return `${hour.toString().padStart(2, '0')}:00`;
+  });
 
   useEffect(() => {
     StatusBar.setBarStyle('dark-content');
-    StatusBar.setBackgroundColor(COLORS.white);
+    if (Platform.OS === 'android') {
+      StatusBar.setBackgroundColor('transparent');
+      StatusBar.setTranslucent(true);
+    }
+    
     loadSchedule();
+
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 600,
+      useNativeDriver: true,
+    }).start();
   }, []);
 
   const loadSchedule = async () => {
@@ -49,7 +68,6 @@ const ScheduleScreen = ({ navigation }) => {
       if (user) {
         const userSchedule = await FirebaseService.getSchedule(user.uid);
         setSchedule(userSchedule || {});
-        analyzeSleepPattern(userSchedule || {});
       }
     } catch (error) {
       console.error('Error loading schedule:', error);
@@ -58,302 +76,275 @@ const ScheduleScreen = ({ navigation }) => {
     }
   };
 
-  const analyzeSleepPattern = (scheduleData) => {
-    const analysis = {};
-    
-    Object.keys(scheduleData).forEach(day => {
-      const dayEvents = scheduleData[day] || [];
-      const sleepEvents = dayEvents.filter(event => event.type === 'sleep');
-      
-      if (sleepEvents.length > 0) {
-        const totalSleepMinutes = sleepEvents.reduce((total, event) => {
-          return total + calculateDuration(event.startTime, event.endTime);
-        }, 0);
-        
-        analysis[day] = {
-          totalHours: totalSleepMinutes / 60,
-          isInsufficient: totalSleepMinutes < 480 // menos de 8 horas
-        };
-      }
-    });
-    
-    setSleepAnalysis(analysis);
-    
-    // Mostrar alerta si hay días con poco sueño
-    const insufficientSleepDays = Object.keys(analysis).filter(
-      day => analysis[day].isInsufficient
-    );
-    
-    if (insufficientSleepDays.length > 0) {
-      showSleepWarning(insufficientSleepDays);
-    }
-  };
-
-  const showSleepWarning = (days) => {
-    Alert.alert(
-      '⚠️ Alerta de Sueño',
-      `Detectamos que tienes menos de 8 horas de sueño programadas en: ${days.join(', ')}.\n\nEl sueño insuficiente puede afectar tu bienestar emocional.`,
-      [
-        { text: 'Ignorar', style: 'cancel' },
-        { text: 'Ver consejos', onPress: () => suggestSleepImprovements() }
-      ]
-    );
-  };
-
-  const suggestSleepImprovements = () => {
-    Alert.alert(
-      '💡 Consejos para mejor sueño',
-      '• Trata de dormir entre 7-9 horas por noche\n• Mantén horarios consistentes\n• Evita pantallas 1 hora antes de dormir\n• Crea una rutina relajante nocturna\n• Considera programar "tiempo de sueño" en tu horario',
-      [{ text: 'Entendido' }]
-    );
-  };
-
   const saveSchedule = async () => {
     try {
       const user = auth().currentUser;
       if (user) {
         await FirebaseService.saveSchedule(user.uid, schedule);
-        Alert.alert('✅ Éxito', 'Horario guardado correctamente. Los espacios libres se mostrarán automáticamente.');
+        Alert.alert('Guardado', 'Horario guardado correctamente');
       }
     } catch (error) {
-      Alert.alert('❌ Error', 'No se pudo guardar el horario');
+      Alert.alert('Error', 'No se pudo guardar');
     }
   };
 
   const addEvent = () => {
-    if (!newEvent.title || !newEvent.startTime || !newEvent.endTime) {
-      Alert.alert('❌ Error', 'Por favor completa todos los campos');
+    if (!newEvent.title.trim()) {
+      Alert.alert('Error', 'Agrega un título');
       return;
     }
 
-    if (newEvent.startTime >= newEvent.endTime) {
-      Alert.alert('❌ Error', 'La hora de fin debe ser después de la hora de inicio');
-      return;
-    }
+    const endHour = parseInt(selectedTime) + (newEvent.duration / 60);
+    const endTime = `${endHour.toString().padStart(2, '0')}:00`;
 
     const daySchedule = schedule[selectedDay] || [];
     const updatedSchedule = {
       ...schedule,
-      [selectedDay]: [...daySchedule, { ...newEvent, id: Date.now().toString() }]
+      [selectedDay]: [...daySchedule, { 
+        ...newEvent, 
+        id: Date.now().toString(),
+        startTime: selectedTime,
+        endTime: endTime
+      }]
     };
 
     setSchedule(updatedSchedule);
-    setNewEvent({ title: '', startTime: '', endTime: '', type: 'class' });
+    setNewEvent({ title: '', type: 'class', duration: 60 });
     setModalVisible(false);
-    analyzeSleepPattern(updatedSchedule);
   };
 
   const removeEvent = (day, eventId) => {
-    Alert.alert(
-      '🗑️ Eliminar evento',
-      '¿Estás seguro de que quieres eliminar este evento?',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Eliminar',
-          style: 'destructive',
-          onPress: () => {
-            const daySchedule = schedule[day] || [];
-            const updatedSchedule = {
-              ...schedule,
-              [day]: daySchedule.filter(event => event.id !== eventId)
-            };
-            setSchedule(updatedSchedule);
-            analyzeSleepPattern(updatedSchedule);
-          }
-        }
-      ]
-    );
-  };
-
-  const getFreeTime = (day) => {
     const daySchedule = schedule[day] || [];
-    if (daySchedule.length === 0) return [];
-
-    const sortedEvents = daySchedule.sort((a, b) => 
-      a.startTime.localeCompare(b.startTime)
-    );
-
-    const freeSlots = [];
-    let lastEndTime = '06:00';
-
-    sortedEvents.forEach(event => {
-      if (event.startTime > lastEndTime) {
-        const duration = calculateDuration(lastEndTime, event.startTime);
-        if (duration >= 30) {
-          freeSlots.push({
-            startTime: lastEndTime,
-            endTime: event.startTime,
-            duration
-          });
-        }
-      }
-      lastEndTime = event.endTime > lastEndTime ? event.endTime : lastEndTime;
-    });
-
-    if (lastEndTime < '22:00') {
-      const duration = calculateDuration(lastEndTime, '22:00');
-      if (duration >= 30) {
-        freeSlots.push({
-          startTime: lastEndTime,
-          endTime: '22:00',
-          duration
-        });
-      }
-    }
-
-    return freeSlots;
+    const updatedSchedule = {
+      ...schedule,
+      [day]: daySchedule.filter(event => event.id !== eventId)
+    };
+    setSchedule(updatedSchedule);
   };
 
-  const calculateDuration = (start, end) => {
-    const [startHour, startMin] = start.split(':').map(Number);
-    const [endHour, endMin] = end.split(':').map(Number);
-    return (endHour * 60 + endMin) - (startHour * 60 + startMin);
+  const getEventsForTimeSlot = (day, time) => {
+    const daySchedule = schedule[day] || [];
+    return daySchedule.filter(event => event.startTime === time);
   };
 
-  const quickAddEvent = (day, type, title) => {
-    setSelectedDay(day);
-    setNewEvent({ ...newEvent, type, title });
-    setModalVisible(true);
+  const getTodayEvents = () => {
+    return schedule[currentDay] || [];
   };
 
-  const renderEvent = (event, day) => {
-    const eventType = eventTypes[event.type];
-    const duration = calculateDuration(event.startTime, event.endTime);
+  const renderWeekView = () => (
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.weekView}>
+      {days.map((day) => {
+        const dayEvents = schedule[day] || [];
+        const isToday = day === currentDay;
+        
+        return (
+          <TouchableOpacity
+            key={day}
+            style={[styles.dayColumn, isToday && styles.dayColumnToday]}
+            onPress={() => {
+              setCurrentDay(day);
+              setViewMode('day');
+            }}
+            activeOpacity={0.8}
+          >
+            <View style={[styles.dayHeader, isToday && styles.dayHeaderToday]}>
+              <Text style={[styles.dayName, isToday && styles.dayNameToday]}>
+                {day.substring(0, 3)}
+              </Text>
+              <Text style={[styles.dayCount, isToday && styles.dayCountToday]}>
+                {dayEvents.length}
+              </Text>
+            </View>
+
+            <ScrollView style={styles.dayEvents} showsVerticalScrollIndicator={false}>
+              {dayEvents.length === 0 ? (
+                <View style={styles.emptyDay}>
+                  <Text style={styles.emptyText}>Libre</Text>
+                </View>
+              ) : (
+                dayEvents.map(event => (
+                  <View
+                    key={event.id}
+                    style={[
+                      styles.eventBlock,
+                      { backgroundColor: eventTypes[event.type].color }
+                    ]}
+                  >
+                    <Text style={styles.eventTime}>{event.startTime}</Text>
+                    <Text style={styles.eventTitle} numberOfLines={2}>
+                      {eventTypes[event.type].emoji} {event.title}
+                    </Text>
+                  </View>
+                ))
+              )}
+            </ScrollView>
+
+            <TouchableOpacity
+              style={[styles.addDayButton, isToday && styles.addDayButtonToday]}
+              onPress={() => {
+                setSelectedDay(day);
+                setSelectedTime('08:00');
+                setModalVisible(true);
+              }}
+              activeOpacity={0.8}
+            >
+              <CustomIcons.Plus size={14} color={COLORS.white} />
+            </TouchableOpacity>
+          </TouchableOpacity>
+        );
+      })}
+    </ScrollView>
+  );
+
+  const renderDayView = () => {
+    const dayEvents = schedule[currentDay] || [];
     
     return (
-      <TouchableOpacity 
-        key={event.id} 
-        style={[styles.eventCard, { borderLeftColor: eventType.color }]}
-        onLongPress={() => removeEvent(day, event.id)}
-        activeOpacity={0.8}
-      >
-        <View style={styles.eventHeader}>
-          <View style={[styles.eventTypeIcon, { backgroundColor: eventType.color + '20' }]}>
-            <Text style={styles.eventIcon}>{eventType.icon}</Text>
-          </View>
-          <View style={styles.eventInfo}>
-            <Text style={styles.eventTitle}>{event.title}</Text>
-            <Text style={styles.eventTime}>
-              {event.startTime} - {event.endTime} ({Math.floor(duration / 60)}h {duration % 60}m)
-            </Text>
-            <Text style={[styles.eventType, { color: eventType.color }]}>
-              {eventType.label}
-            </Text>
-          </View>
+      <ScrollView style={styles.dayView} showsVerticalScrollIndicator={false}>
+        <View style={styles.dayViewHeader}>
           <TouchableOpacity
-            onPress={() => removeEvent(day, event.id)}
-            style={styles.deleteButton}
+            style={styles.backToDayButton}
+            onPress={() => setViewMode('week')}
+            activeOpacity={0.8}
           >
-            <CustomIcons.X size={14} color={COLORS.error} />
+            <CustomIcons.ChevronLeft size={16} color={COLORS.primary} />
+            <Text style={styles.backToDayText}>Semana</Text>
           </TouchableOpacity>
+
+          <Text style={styles.currentDayTitle}>{currentDay}</Text>
+
+          <View style={styles.dayNavigator}>
+            <TouchableOpacity
+              onPress={() => {
+                const currentIndex = days.indexOf(currentDay);
+                if (currentIndex > 0) {
+                  setCurrentDay(days[currentIndex - 1]);
+                }
+              }}
+              disabled={days.indexOf(currentDay) === 0}
+              activeOpacity={0.7}
+            >
+              <CustomIcons.ChevronLeft 
+                size={20} 
+                color={days.indexOf(currentDay) === 0 ? '#D1D5DB' : COLORS.text} 
+              />
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              onPress={() => {
+                const currentIndex = days.indexOf(currentDay);
+                if (currentIndex < days.length - 1) {
+                  setCurrentDay(days[currentIndex + 1]);
+                }
+              }}
+              disabled={days.indexOf(currentDay) === days.length - 1}
+              activeOpacity={0.7}
+            >
+              <CustomIcons.ChevronRight 
+                size={20} 
+                color={days.indexOf(currentDay) === days.length - 1 ? '#D1D5DB' : COLORS.text} 
+              />
+            </TouchableOpacity>
+          </View>
         </View>
-      </TouchableOpacity>
+
+        <View style={styles.timeline}>
+          {timeSlots.map(time => {
+            const events = getEventsForTimeSlot(currentDay, time);
+            
+            return (
+              <View key={time} style={styles.timeSlot}>
+                <View style={styles.timeLabel}>
+                  <Text style={styles.timeText}>{time}</Text>
+                </View>
+
+                <TouchableOpacity
+                  style={styles.timeContent}
+                  onPress={() => {
+                    setSelectedDay(currentDay);
+                    setSelectedTime(time);
+                    setModalVisible(true);
+                  }}
+                  activeOpacity={0.9}
+                >
+                  {events.length === 0 ? (
+                    <View style={styles.emptySlot}>
+                      <CustomIcons.Plus size={16} color="#D1D5DB" />
+                    </View>
+                  ) : (
+                    events.map(event => (
+                      <View
+                        key={event.id}
+                        style={[
+                          styles.eventCard,
+                          { borderLeftColor: eventTypes[event.type].color }
+                        ]}
+                      >
+                        <View style={styles.eventCardHeader}>
+                          <Text style={styles.eventCardTitle}>
+                            {eventTypes[event.type].emoji} {event.title}
+                          </Text>
+                          <TouchableOpacity
+                            onPress={() => removeEvent(currentDay, event.id)}
+                            style={styles.deleteEventButton}
+                            activeOpacity={0.7}
+                          >
+                            <CustomIcons.X size={14} color="#EF4444" />
+                          </TouchableOpacity>
+                        </View>
+                        <Text style={styles.eventCardTime}>
+                          {event.startTime} - {event.endTime}
+                        </Text>
+                        <Text style={[
+                          styles.eventCardType,
+                          { color: eventTypes[event.type].color }
+                        ]}>
+                          {eventTypes[event.type].label}
+                        </Text>
+                      </View>
+                    ))
+                  )}
+                </TouchableOpacity>
+              </View>
+            );
+          })}
+        </View>
+      </ScrollView>
     );
   };
-
-  const renderFreeTime = (freeSlot) => (
-    <TouchableOpacity 
-      key={`${freeSlot.startTime}-${freeSlot.endTime}`} 
-      style={styles.freeTimeCard}
-      onPress={() => {
-        const duration = freeSlot.duration;
-        const activity = duration >= 120 ? 'ejercicio, hobbies o estudiar' : 
-                        duration >= 60 ? 'relajarte, leer o hacer una siesta' : 
-                        'un descanso, hidratarte o estirarte';
-        
-        Alert.alert(
-          '💚 Tiempo libre disponible',
-          `${freeSlot.startTime} - ${freeSlot.endTime} (${Math.floor(duration / 60)}h ${duration % 60}m)\n\n¡Perfecto para ${activity}!\n\n¿Te gustaría recibir recordatorios cuando llegue este momento?`,
-          [
-            { text: 'No, gracias', style: 'cancel' },
-            { text: 'Sí, recordarme', onPress: () => {
-              Alert.alert('📅 Recordatorio programado', 'Te avisaremos cuando llegue tu tiempo libre.');
-            }}
-          ]
-        );
-      }}
-      activeOpacity={0.8}
-    >
-      <View style={styles.freeTimeIcon}>
-        <Text style={styles.freeTimeEmoji}>💚</Text>
-      </View>
-      <View style={styles.freeTimeInfo}>
-        <Text style={styles.freeTimeText}>Tiempo libre</Text>
-        <Text style={styles.freeTimeHours}>
-          {freeSlot.startTime} - {freeSlot.endTime} ({Math.floor(freeSlot.duration / 60)}h {freeSlot.duration % 60}m)
-        </Text>
-        {freeSlot.duration >= 120 && (
-          <Text style={styles.suggestion}>💡 Perfecto para ejercicio o hobbies</Text>
-        )}
-        {freeSlot.duration >= 60 && freeSlot.duration < 120 && (
-          <Text style={styles.suggestion}>💡 Ideal para una siesta o lectura</Text>
-        )}
-        {freeSlot.duration >= 30 && freeSlot.duration < 60 && (
-          <Text style={styles.suggestion}>💡 Tiempo para descanso y hidratación</Text>
-        )}
-      </View>
-    </TouchableOpacity>
-  );
-
-  const renderQuickActions = (day) => (
-    <View style={styles.quickActionsContainer}>
-      <Text style={styles.quickActionsTitle}>Agregar rápido:</Text>
-      <View style={styles.quickActionsRow}>
-        <TouchableOpacity 
-          style={[styles.quickActionBtn, { backgroundColor: eventTypes.class.color + '20' }]}
-          onPress={() => quickAddEvent(day, 'class', 'Clase')}
-          activeOpacity={0.8}
-        >
-          <Text style={styles.quickActionEmoji}>{eventTypes.class.icon}</Text>
-          <Text style={[styles.quickActionText, { color: eventTypes.class.color }]}>Clase</Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity 
-          style={[styles.quickActionBtn, { backgroundColor: eventTypes.work.color + '20' }]}
-          onPress={() => quickAddEvent(day, 'work', 'Trabajo')}
-          activeOpacity={0.8}
-        >
-          <Text style={styles.quickActionEmoji}>{eventTypes.work.icon}</Text>
-          <Text style={[styles.quickActionText, { color: eventTypes.work.color }]}>Trabajo</Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity 
-          style={[styles.quickActionBtn, { backgroundColor: eventTypes.sleep.color + '20' }]}
-          onPress={() => quickAddEvent(day, 'sleep', 'Dormir')}
-          activeOpacity={0.8}
-        >
-          <Text style={styles.quickActionEmoji}>{eventTypes.sleep.icon}</Text>
-          <Text style={[styles.quickActionText, { color: eventTypes.sleep.color }]}>Dormir</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
 
   if (loading) {
     return (
       <SafeAreaView style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={COLORS.primary} />
-        <Text style={styles.loadingText}>Cargando horarios...</Text>
+        <View style={styles.loadingContent}>
+          <View style={styles.loadingCircle}>
+            <CustomIcons.Calendar size={32} color={COLORS.white} />
+          </View>
+          <Text style={styles.loadingText}>Cargando horario...</Text>
+        </View>
       </SafeAreaView>
     );
   }
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Header mejorado */}
+      <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
+      
+      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.backButton}
           onPress={() => navigation.goBack()}
           activeOpacity={0.7}
         >
-          <CustomIcons.ArrowLeft size={20} color={COLORS.text} />
+          <CustomIcons.ArrowLeft size={22} color={COLORS.text} />
         </TouchableOpacity>
         
         <View style={styles.headerInfo}>
-          <Text style={styles.headerTitle}>Mis Horarios</Text>
-          <Text style={styles.headerSubtitle}>Organiza tu tiempo y bienestar</Text>
+          <Text style={styles.headerTitle}>Mi Horario</Text>
+          <Text style={styles.headerSubtitle}>
+            {getTodayEvents().length} eventos hoy
+          </Text>
         </View>
         
         <TouchableOpacity
@@ -361,128 +352,47 @@ const ScheduleScreen = ({ navigation }) => {
           onPress={saveSchedule}
           activeOpacity={0.8}
         >
-          <CustomIcons.Save size={16} color={COLORS.white} />
-          <Text style={styles.saveButtonText}>Guardar</Text>
+          <CustomIcons.Save size={18} color={COLORS.white} />
         </TouchableOpacity>
       </View>
 
-      {/* Análisis de sueño */}
-      {sleepAnalysis && Object.keys(sleepAnalysis).length > 0 && (
-        <View style={styles.sleepAnalysisContainer}>
-          <Text style={styles.sleepAnalysisTitle}>📊 Análisis de sueño semanal</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.sleepAnalysisScroll}>
-            {Object.entries(sleepAnalysis).map(([day, analysis]) => (
-              <TouchableOpacity 
-                key={day} 
-                style={[
-                  styles.sleepAnalysisCard,
-                  analysis.isInsufficient && styles.sleepAnalysisCardWarning
-                ]}
-                onPress={() => {
-                  if (analysis.isInsufficient) {
-                    suggestSleepImprovements();
-                  } else {
-                    Alert.alert('😴 Buen sueño', `Tienes ${analysis.totalHours.toFixed(1)} horas de sueño programadas para ${day}. ¡Perfecto!`);
-                  }
-                }}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.sleepAnalysisDay}>{day.slice(0, 3)}</Text>
-                <Text style={[
-                  styles.sleepAnalysisHours,
-                  { color: analysis.isInsufficient ? COLORS.error : COLORS.success }
-                ]}>
-                  {analysis.totalHours.toFixed(1)}h
-                </Text>
-                {analysis.isInsufficient && (
-                  <Text style={styles.sleepAnalysisWarning}>⚠️</Text>
-                )}
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
-      )}
+      {/* View Toggle */}
+      <View style={styles.viewToggle}>
+        <TouchableOpacity
+          style={[styles.viewButton, viewMode === 'week' && styles.viewButtonActive]}
+          onPress={() => setViewMode('week')}
+          activeOpacity={0.8}
+        >
+          <CustomIcons.Calendar size={16} color={viewMode === 'week' ? COLORS.primary : '#9CA3AF'} />
+          <Text style={[
+            styles.viewButtonText,
+            viewMode === 'week' && styles.viewButtonTextActive
+          ]}>
+            Semana
+          </Text>
+        </TouchableOpacity>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {days.map(day => {
-          const daySchedule = schedule[day] || [];
-          const freeSlots = getFreeTime(day);
-          const isToday = new Date().toLocaleDateString('es-ES', { weekday: 'long' }) === day;
-          
-          return (
-            <View key={day} style={[styles.dayContainer, isToday && styles.todayContainer]}>
-              <View style={styles.dayHeader}>
-                <View style={styles.dayTitleContainer}>
-                  <Text style={[styles.dayTitle, isToday && styles.todayTitle]}>
-                    {day} {isToday && '(Hoy)'}
-                  </Text>
-                  <Text style={styles.dayStats}>
-                    {daySchedule.length} eventos • {freeSlots.length} espacios libres
-                  </Text>
-                </View>
-                
-                <TouchableOpacity
-                  style={[styles.addButton, isToday && styles.todayAddButton]}
-                  onPress={() => {
-                    setSelectedDay(day);
-                    setModalVisible(true);
-                  }}
-                  activeOpacity={0.8}
-                >
-                  <CustomIcons.Plus size={14} color={COLORS.white} />
-                  <Text style={styles.addButtonText}>Agregar</Text>
-                </TouchableOpacity>
-              </View>
+        <TouchableOpacity
+          style={[styles.viewButton, viewMode === 'day' && styles.viewButtonActive]}
+          onPress={() => setViewMode('day')}
+          activeOpacity={0.8}
+        >
+          <CustomIcons.Clock size={16} color={viewMode === 'day' ? COLORS.primary : '#9CA3AF'} />
+          <Text style={[
+            styles.viewButtonText,
+            viewMode === 'day' && styles.viewButtonTextActive
+          ]}>
+            Día
+          </Text>
+        </TouchableOpacity>
+      </View>
 
-              {daySchedule.length === 0 ? (
-                <View style={styles.emptyDay}>
-                  <Text style={styles.emptyDayEmoji}>📅</Text>
-                  <Text style={styles.emptyDayText}>Sin eventos programados</Text>
-                  {renderQuickActions(day)}
-                </View>
-              ) : (
-                <>
-                  <View style={styles.eventsSection}>
-                    <Text style={styles.sectionLabel}>
-                      📋 Eventos programados ({daySchedule.length})
-                    </Text>
-                    {daySchedule.map(event => renderEvent(event, day))}
-                  </View>
-                  
-                  {freeSlots.length > 0 && (
-                    <View style={styles.freeTimeSection}>
-                      <Text style={styles.sectionLabel}>
-                        💚 Tiempo libre disponible ({freeSlots.length})
-                      </Text>
-                      {freeSlots.map(renderFreeTime)}
-                    </View>
-                  )}
-                  
-                  {renderQuickActions(day)}
-                </>
-              )}
-            </View>
-          );
-        })}
+      {/* Content */}
+      <Animated.View style={[styles.content, { opacity: fadeAnim }]}>
+        {viewMode === 'week' ? renderWeekView() : renderDayView()}
+      </Animated.View>
 
-        {/* Tips section */}
-        <View style={styles.tipsSection}>
-          <Text style={styles.tipsTitle}>💡 Consejos para el bienestar</Text>
-          <View style={styles.tipsCard}>
-            <Text style={styles.tipsText}>
-              🕐 Programa descansos de 15 min cada 2 horas{'\n'}
-              🧘 Usa espacios libres para ejercicios de respiración{'\n'}
-              😴 Incluye 7-9 horas de sueño en tu horario{'\n'}
-              💧 Aprovecha tiempos cortos para hidratarte{'\n'}
-              📱 Toca los espacios libres para ver sugerencias{'\n'}
-              ⚡ Deja espacio para lo inesperado{'\n'}
-              🔔 Recibe alertas automáticas de bienestar
-            </Text>
-          </View>
-        </View>
-      </ScrollView>
-
-      {/* Modal para agregar eventos */}
+      {/* Modal */}
       <Modal
         animationType="slide"
         transparent={true}
@@ -492,88 +402,84 @@ const ScheduleScreen = ({ navigation }) => {
         <View style={styles.modalContainer}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>📅 Agregar evento - {selectedDay}</Text>
+              <Text style={styles.modalTitle}>Nuevo Evento</Text>
               <TouchableOpacity
-                style={styles.modalCloseButton}
                 onPress={() => setModalVisible(false)}
+                style={styles.modalClose}
                 activeOpacity={0.7}
               >
-                <CustomIcons.X size={20} color={COLORS.textMuted} />
+                <CustomIcons.X size={20} color="#9CA3AF" />
               </TouchableOpacity>
             </View>
 
             <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>📝 Título del evento</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Ej. Reunión de trabajo, Clase de matemáticas..."
-                  value={newEvent.title}
-                  onChangeText={(text) => setNewEvent({...newEvent, title: text})}
-                  maxLength={50}
-                />
+              <Text style={styles.inputLabel}>Título</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Ej. Matemáticas, Gimnasio..."
+                value={newEvent.title}
+                onChangeText={(text) => setNewEvent({...newEvent, title: text})}
+                maxLength={30}
+                placeholderTextColor="#9CA3AF"
+              />
+
+              <Text style={styles.inputLabel}>Tipo</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.typeSelector}>
+                {Object.entries(eventTypes).map(([key, type]) => (
+                  <TouchableOpacity
+                    key={key}
+                    style={[
+                      styles.typeButton,
+                      newEvent.type === key && [
+                        styles.typeButtonActive,
+                        { backgroundColor: type.color + '20', borderColor: type.color }
+                      ]
+                    ]}
+                    onPress={() => setNewEvent({...newEvent, type: key})}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.typeEmoji}>{type.emoji}</Text>
+                    <Text style={[
+                      styles.typeText,
+                      newEvent.type === key && { color: type.color, fontWeight: '700' }
+                    ]}>
+                      {type.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+
+              <Text style={styles.inputLabel}>Duración</Text>
+              <View style={styles.durationSelector}>
+                {[30, 60, 90, 120].map(duration => (
+                  <TouchableOpacity
+                    key={duration}
+                    style={[
+                      styles.durationButton,
+                      newEvent.duration === duration && styles.durationButtonActive
+                    ]}
+                    onPress={() => setNewEvent({...newEvent, duration})}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={[
+                      styles.durationText,
+                      newEvent.duration === duration && styles.durationTextActive
+                    ]}>
+                      {duration < 60 ? `${duration}m` : `${duration/60}h`}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
               </View>
 
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>🏷️ Tipo de evento</Text>
-                <View style={styles.typeSelector}>
-                  {Object.entries(eventTypes).map(([key, type]) => (
-                    <TouchableOpacity
-                      key={key}
-                      style={[
-                        styles.typeButton,
-                        newEvent.type === key && [
-                          styles.typeButtonActive, 
-                          { backgroundColor: type.color + '20', borderColor: type.color }
-                        ]
-                      ]}
-                      onPress={() => setNewEvent({...newEvent, type: key})}
-                      activeOpacity={0.8}
-                    >
-                      <Text style={styles.typeButtonIcon}>{type.icon}</Text>
-                      <Text style={[
-                        styles.typeButtonText,
-                        newEvent.type === key && { color: type.color, fontWeight: '600' }
-                      ]}>
-                        {type.label}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
+              <View style={styles.previewCard}>
+                <Text style={styles.previewTitle}>Vista previa</Text>
+                <Text style={styles.previewText}>
+                  {selectedDay} a las {selectedTime}
+                </Text>
+                <Text style={styles.previewText}>
+                  Duración: {newEvent.duration < 60 ? `${newEvent.duration} min` : `${newEvent.duration/60} hora${newEvent.duration > 60 ? 's' : ''}`}
+                </Text>
               </View>
-
-              <View style={styles.timeInputsRow}>
-                <View style={styles.timeInputGroup}>
-                  <Text style={styles.inputLabel}>🕐 Hora inicio</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="09:00"
-                    value={newEvent.startTime}
-                    onChangeText={(text) => setNewEvent({...newEvent, startTime: text})}
-                    keyboardType="numeric"
-                  />
-                </View>
-                <View style={styles.timeInputGroup}>
-                  <Text style={styles.inputLabel}>🕑 Hora fin</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="10:30"
-                    value={newEvent.endTime}
-                    onChangeText={(text) => setNewEvent({...newEvent, endTime: text})}
-                    keyboardType="numeric"
-                  />
-                </View>
-              </View>
-
-              {/* Preview de duración */}
-              {newEvent.startTime && newEvent.endTime && newEvent.startTime < newEvent.endTime && (
-                <View style={styles.durationPreview}>
-                  <Text style={styles.durationText}>
-                    ⏱️ Duración: {Math.floor(calculateDuration(newEvent.startTime, newEvent.endTime) / 60)}h{' '}
-                    {calculateDuration(newEvent.startTime, newEvent.endTime) % 60}m
-                  </Text>
-                </View>
-              )}
             </ScrollView>
 
             <View style={styles.modalActions}>
@@ -584,17 +490,18 @@ const ScheduleScreen = ({ navigation }) => {
               >
                 <Text style={styles.cancelButtonText}>Cancelar</Text>
               </TouchableOpacity>
+
               <TouchableOpacity
                 style={[
                   styles.confirmButton,
-                  (!newEvent.title || !newEvent.startTime || !newEvent.endTime) && styles.confirmButtonDisabled
+                  !newEvent.title.trim() && styles.confirmButtonDisabled
                 ]}
                 onPress={addEvent}
-                disabled={!newEvent.title || !newEvent.startTime || !newEvent.endTime}
+                disabled={!newEvent.title.trim()}
                 activeOpacity={0.8}
               >
                 <CustomIcons.Plus size={16} color={COLORS.white} />
-                <Text style={styles.confirmButtonText}>Agregar evento</Text>
+                <Text style={styles.confirmButtonText}>Agregar</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -607,529 +514,477 @@ const ScheduleScreen = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: '#F5F5F5',
   },
+  
+  // Loading
   loadingContainer: {
     flex: 1,
+    backgroundColor: '#F5F5F5',
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: COLORS.background,
+  },
+  loadingContent: {
+    alignItems: 'center',
+  },
+  loadingCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: COLORS.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
   },
   loadingText: {
-    marginTop: Theme.spacing.lg,
-    color: COLORS.textSecondary,
-    fontSize: Theme.typography.body,
+    fontSize: 14,
+    color: '#6B7280',
     fontWeight: '500',
   },
   
   // Header
   header: {
     backgroundColor: COLORS.white,
-    paddingHorizontal: Theme.spacing.lg,
-    paddingVertical: Theme.spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.borderLight,
+    paddingTop: Platform.OS === 'ios' ? 10 : 60,
+    paddingBottom: 16,
+    paddingHorizontal: 16,
     flexDirection: 'row',
     alignItems: 'center',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.1,
-        shadowRadius: 3,
-      },
-      android: {
-        elevation: 3,
-      },
-    }),
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+    elevation: 3,
   },
   backButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: COLORS.gray50,
-    marginRight: Theme.spacing.md,
+    backgroundColor: '#F9FAFB',
+    marginRight: 12,
   },
   headerInfo: {
     flex: 1,
   },
   headerTitle: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '700',
-    color: COLORS.text,
+    color: '#1A1A1A',
     marginBottom: 2,
   },
   headerSubtitle: {
     fontSize: 12,
-    color: COLORS.textSecondary,
+    color: '#6B7280',
   },
   saveButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
     backgroundColor: COLORS.primary,
-    paddingHorizontal: Theme.spacing.lg,
-    paddingVertical: Theme.spacing.md,
-    borderRadius: Theme.borderRadius.medium,
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  
+  // View Toggle
+  viewToggle: {
+    flexDirection: 'row',
+    backgroundColor: COLORS.white,
+    padding: 8,
+    gap: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  viewButton: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    borderRadius: 12,
     gap: 6,
-    ...Theme.shadows.small,
   },
-  saveButtonText: {
-    color: COLORS.white,
+  viewButtonActive: {
+    backgroundColor: '#EBF5FB',
+  },
+  viewButtonText: {
     fontSize: 14,
-    fontWeight: '600',
-  },
-
-  // Sleep analysis
-  sleepAnalysisContainer: {
-    backgroundColor: COLORS.white,
-    paddingVertical: Theme.spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.borderLight,
-  },
-  sleepAnalysisTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: COLORS.text,
-    marginHorizontal: Theme.spacing.lg,
-    marginBottom: Theme.spacing.sm,
-  },
-  sleepAnalysisScroll: {
-    paddingHorizontal: Theme.spacing.lg,
-  },
-  sleepAnalysisCard: {
-    backgroundColor: COLORS.gray50,
-    padding: Theme.spacing.md,
-    borderRadius: 8,
-    marginRight: Theme.spacing.sm,
-    alignItems: 'center',
-    minWidth: 60,
-  },
-  sleepAnalysisCardWarning: {
-    backgroundColor: COLORS.errorSoft,
-    borderWidth: 1,
-    borderColor: COLORS.error,
-  },
-  sleepAnalysisDay: {
-    fontSize: 10,
-    color: COLORS.textMuted,
+    color: '#9CA3AF',
     fontWeight: '500',
-    marginBottom: 2,
   },
-  sleepAnalysisHours: {
-    fontSize: 14,
+  viewButtonTextActive: {
+    color: COLORS.primary,
     fontWeight: '700',
-  },
-  sleepAnalysisWarning: {
-    fontSize: 10,
-    marginTop: 2,
   },
   
   // Content
   content: {
     flex: 1,
   },
-  dayContainer: {
-    backgroundColor: COLORS.white,
-    marginHorizontal: Theme.spacing.lg,
-    marginBottom: Theme.spacing.lg,
-    borderRadius: Theme.borderRadius.large,
-    padding: Theme.spacing.lg,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    ...Theme.shadows.small,
+  
+  // Week View
+  weekView: {
+    flex: 1,
+    padding: 16,
   },
-  todayContainer: {
+  dayColumn: {
+    width: 120,
+    marginRight: 12,
+    backgroundColor: COLORS.white,
+    borderRadius: 16,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  dayColumnToday: {
     borderColor: COLORS.primary,
     borderWidth: 2,
-    backgroundColor: COLORS.blue50,
+    backgroundColor: '#EBF5FB',
   },
   dayHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: Theme.spacing.lg,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+    marginBottom: 12,
   },
-  dayTitleContainer: {
-    flex: 1,
+  dayHeaderToday: {
+    borderBottomColor: COLORS.primary,
   },
-  dayTitle: {
-    fontSize: Theme.typography.h4,
-    fontWeight: '600',
-    color: COLORS.text,
-    marginBottom: 2,
-  },
-  todayTitle: {
-    color: COLORS.primary,
-  },
-  dayStats: {
-    fontSize: 11,
-    color: COLORS.textMuted,
-    fontWeight: '500',
-  },
-  addButton: {
-    backgroundColor: COLORS.primary,
-    paddingHorizontal: Theme.spacing.md,
-    paddingVertical: Theme.spacing.sm,
-    borderRadius: Theme.borderRadius.medium,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    ...Theme.shadows.small,
-  },
-  todayAddButton: {
-    backgroundColor: COLORS.success,
-  },
-  addButtonText: {
-    color: COLORS.white,
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  
-  // Empty state
-  emptyDay: {
-    alignItems: 'center',
-    paddingVertical: Theme.spacing.xl,
-  },
-  emptyDayEmoji: {
-    fontSize: 32,
-    marginBottom: Theme.spacing.md,
-  },
-  emptyDayText: {
-    color: COLORS.textMuted,
-    fontSize: Theme.typography.body,
-    fontStyle: 'italic',
-    marginBottom: Theme.spacing.lg,
-  },
-  
-  // Quick actions
-  quickActionsContainer: {
-    marginTop: Theme.spacing.lg,
-    padding: Theme.spacing.md,
-    backgroundColor: COLORS.gray50,
-    borderRadius: Theme.borderRadius.medium,
-  },
-  quickActionsTitle: {
-    fontSize: 12,
-    color: COLORS.textSecondary,
-    fontWeight: '600',
-    marginBottom: Theme.spacing.sm,
-    textTransform: 'uppercase',
-  },
-  quickActionsRow: {
-    flexDirection: 'row',
-    gap: Theme.spacing.sm,
-  },
-  quickActionBtn: {
-    flex: 1,
-    padding: Theme.spacing.sm,
-    borderRadius: Theme.borderRadius.medium,
-    alignItems: 'center',
-    gap: 4,
-  },
-  quickActionEmoji: {
-    fontSize: 16,
-  },
-  quickActionText: {
-    fontSize: 10,
-    fontWeight: '600',
-  },
-  
-  // Sections
-  eventsSection: {
-    marginBottom: Theme.spacing.lg,
-  },
-  freeTimeSection: {
-    marginTop: Theme.spacing.lg,
-  },
-  sectionLabel: {
-    fontSize: 12,
-    color: COLORS.textSecondary,
-    fontWeight: '600',
-    marginBottom: Theme.spacing.md,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  
-  // Event card
-  eventCard: {
-    backgroundColor: COLORS.gray50,
-    borderRadius: Theme.borderRadius.medium,
-    padding: Theme.spacing.md,
-    marginBottom: Theme.spacing.sm,
-    borderLeftWidth: 4,
-    ...Theme.shadows.small,
-  },
-  eventHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  eventTypeIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: Theme.spacing.md,
-  },
-  eventIcon: {
-    fontSize: 16,
-  },
-  eventInfo: {
-    flex: 1,
-  },
-  eventTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: COLORS.text,
-    marginBottom: 2,
-  },
-  eventTime: {
-    fontSize: 12,
-    color: COLORS.textSecondary,
-    marginBottom: 2,
-  },
-  eventType: {
-    fontSize: 11,
-    fontWeight: '500',
-  },
-  deleteButton: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: COLORS.errorSoft,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  
-  // Free time card
-  freeTimeCard: {
-    backgroundColor: COLORS.successSoft,
-    borderRadius: Theme.borderRadius.medium,
-    padding: Theme.spacing.md,
-    marginBottom: Theme.spacing.sm,
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderLeftWidth: 4,
-    borderLeftColor: COLORS.success,
-  },
-  freeTimeIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: COLORS.success + '20',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: Theme.spacing.md,
-  },
-  freeTimeEmoji: {
-    fontSize: 16,
-  },
-  freeTimeInfo: {
-    flex: 1,
-  },
-  freeTimeText: {
+  dayName: {
     fontSize: 14,
-    fontWeight: '600',
-    color: COLORS.success,
-    marginBottom: 2,
-  },
-  freeTimeHours: {
-    fontSize: 12,
-    color: COLORS.success,
-    opacity: 0.8,
+    fontWeight: '700',
+    color: '#1A1A1A',
     marginBottom: 4,
   },
-  suggestion: {
+  dayNameToday: {
+    color: COLORS.primary,
+  },
+  dayCount: {
     fontSize: 11,
-    color: COLORS.success,
-    fontStyle: 'italic',
+    color: '#9CA3AF',
+    fontWeight: '600',
+  },
+  dayCountToday: {
+    color: COLORS.primary,
+  },
+  dayEvents: {
+    flex: 1,
+    minHeight: 200,
+  },
+  emptyDay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 32,
+  },
+  emptyText: {
+    fontSize: 12,
+    color: '#D1D5DB',
+    fontWeight: '500',
+  },
+  eventBlock: {
+    padding: 8,
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  eventTime: {
+    fontSize: 10,
+    color: COLORS.white,
+    fontWeight: '700',
+    marginBottom: 2,
+  },
+  eventTitle: {
+    fontSize: 11,
+    color: COLORS.white,
+    fontWeight: '600',
+  },
+  addDayButton: {
+    backgroundColor: COLORS.primary,
+    paddingVertical: 8,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  addDayButtonToday: {
+    backgroundColor: '#10B981',
   },
   
-  // Tips section
-  tipsSection: {
-    marginHorizontal: Theme.spacing.lg,
-    marginBottom: Theme.spacing.xxxl,
+  // Day View
+  dayView: {
+    flex: 1,
+    padding: 16,
   },
-  tipsTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: COLORS.text,
-    marginBottom: Theme.spacing.md,
+  dayViewHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
   },
-  tipsCard: {
-    backgroundColor: COLORS.white,
-    padding: Theme.spacing.lg,
-    borderRadius: Theme.borderRadius.large,
-    borderLeftWidth: 4,
-    borderLeftColor: COLORS.primary,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    ...Theme.shadows.small,
+  backToDayButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
   },
-  tipsText: {
+  backToDayText: {
     fontSize: 14,
-    color: COLORS.textSecondary,
-    lineHeight: 22,
+    color: COLORS.primary,
+    fontWeight: '600',
+  },
+  currentDayTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1A1A1A',
+  },
+  dayNavigator: {
+    flexDirection: 'row',
+    gap: 16,
+  },
+  timeline: {
+    backgroundColor: COLORS.white,
+    borderRadius: 16,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  timeSlot: {
+    flexDirection: 'row',
+    minHeight: 60,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  timeLabel: {
+    width: 60,
+    paddingRight: 12,
+    paddingTop: 4,
+  },
+  timeText: {
+    fontSize: 12,
+    color: '#9CA3AF',
+    fontWeight: '600',
+  },
+  timeContent: {
+    flex: 1,
+    paddingVertical: 4,
+  },
+  emptySlot: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#F3F4F6',
+    borderRadius: 8,
+    borderStyle: 'dashed',
+    minHeight: 50,
+  },
+  eventCard: {
+    backgroundColor: '#F9FAFB',
+    padding: 12,
+    borderRadius: 8,
+    borderLeftWidth: 4,
+    marginBottom: 8,
+  },
+  eventCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 4,
+  },
+  eventCardTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1A1A1A',
+    flex: 1,
+  },
+  deleteEventButton: {
+    padding: 4,
+  },
+  eventCardTime: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginBottom: 2,
+  },
+  eventCardType: {
+    fontSize: 11,
+    fontWeight: '600',
   },
   
   // Modal
   modalContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: COLORS.overlay,
-    padding: Theme.spacing.lg,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
   },
   modalContent: {
     backgroundColor: COLORS.white,
-    borderRadius: Theme.borderRadius.extraLarge,
-    width: '100%',
-    maxWidth: 400,
-    maxHeight: '85%',
-    ...Theme.shadows.large,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    maxHeight: '80%',
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: Theme.spacing.lg,
+    padding: 20,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.borderLight,
+    borderBottomColor: '#F3F4F6',
   },
   modalTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: COLORS.text,
-    flex: 1,
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1A1A1A',
   },
-  modalCloseButton: {
+  modalClose: {
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: COLORS.gray50,
+    backgroundColor: '#F3F4F6',
     justifyContent: 'center',
     alignItems: 'center',
   },
   modalBody: {
-    padding: Theme.spacing.lg,
-    maxHeight: 400,
-  },
-  
-  // Form inputs
-  inputGroup: {
-    marginBottom: Theme.spacing.lg,
+    padding: 20,
   },
   inputLabel: {
     fontSize: 12,
-    color: COLORS.textSecondary,
-    fontWeight: '600',
-    marginBottom: Theme.spacing.sm,
+    fontWeight: '700',
+    color: '#6B7280',
+    marginBottom: 8,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
   input: {
     borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: Theme.borderRadius.medium,
-    padding: Theme.spacing.md,
-    fontSize: 14,
-    color: COLORS.text,
-    backgroundColor: COLORS.white,
+    borderColor: '#E5E7EB',
+    borderRadius: 12,
+    padding: 12,
+    fontSize: 15,
+    color: '#1A1A1A',
+    marginBottom: 20,
   },
-  timeInputsRow: {
-    flexDirection: 'row',
-    gap: Theme.spacing.md,
-  },
-  timeInputGroup: {
-    flex: 1,
-  },
-  
-  // Duration preview
-  durationPreview: {
-    backgroundColor: COLORS.blue50,
-    padding: Theme.spacing.md,
-    borderRadius: Theme.borderRadius.medium,
-    marginTop: Theme.spacing.md,
-    alignItems: 'center',
-  },
-  durationText: {
-    fontSize: 13,
-    color: COLORS.primary,
-    fontWeight: '600',
-  },
-  
-  // Type selector
   typeSelector: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Theme.spacing.sm,
+    marginBottom: 20,
   },
   typeButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: Theme.spacing.md,
-    borderRadius: Theme.borderRadius.medium,
+    padding: 10,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.gray50,
-    width: '48%',
-    minHeight: 48,
+    borderColor: '#E5E7EB',
+    backgroundColor: '#F9FAFB',
+    marginRight: 8,
+    gap: 6,
   },
   typeButtonActive: {
     borderWidth: 2,
   },
-  typeButtonIcon: {
+  typeEmoji: {
     fontSize: 16,
-    marginRight: Theme.spacing.sm,
   },
-  typeButtonText: {
-    fontSize: 12,
-    color: COLORS.textSecondary,
+  typeText: {
+    fontSize: 13,
+    color: '#6B7280',
     fontWeight: '500',
   },
-  
-  // Modal actions
+  durationSelector: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 20,
+  },
+  durationButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    backgroundColor: '#F9FAFB',
+    alignItems: 'center',
+  },
+  durationButtonActive: {
+    backgroundColor: '#EBF5FB',
+    borderColor: COLORS.primary,
+    borderWidth: 2,
+  },
+  durationText: {
+    fontSize: 14,
+    color: '#6B7280',
+    fontWeight: '600',
+  },
+  durationTextActive: {
+    color: COLORS.primary,
+    fontWeight: '700',
+  },
+  previewCard: {
+    backgroundColor: '#F0F9FF',
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#BAE6FD',
+  },
+  previewTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.primary,
+    marginBottom: 8,
+  },
+  previewText: {
+    fontSize: 14,
+    color: '#0369A1',
+    marginBottom: 4,
+  },
   modalActions: {
     flexDirection: 'row',
-    padding: Theme.spacing.lg,
-    gap: Theme.spacing.md,
+    padding: 20,
+    gap: 12,
     borderTopWidth: 1,
-    borderTopColor: COLORS.borderLight,
+    borderTopColor: '#F3F4F6',
   },
   cancelButton: {
     flex: 1,
-    paddingVertical: Theme.spacing.md,
-    paddingHorizontal: Theme.spacing.lg,
-    borderRadius: Theme.borderRadius.medium,
-    backgroundColor: COLORS.gray100,
+    paddingVertical: 14,
+    borderRadius: 12,
+    backgroundColor: '#F3F4F6',
     alignItems: 'center',
   },
   cancelButtonText: {
-    color: COLORS.textSecondary,
-    fontSize: 14,
+    fontSize: 15,
+    color: '#6B7280',
     fontWeight: '600',
   },
   confirmButton: {
     flex: 1,
-    paddingVertical: Theme.spacing.md,
-    paddingHorizontal: Theme.spacing.lg,
-    borderRadius: Theme.borderRadius.medium,
+    paddingVertical: 14,
+    borderRadius: 12,
     backgroundColor: COLORS.primary,
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'center',
     gap: 6,
-    ...Theme.shadows.small,
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 4,
   },
   confirmButtonDisabled: {
-    backgroundColor: COLORS.gray300,
+    backgroundColor: '#D1D5DB',
+    shadowOpacity: 0,
+    elevation: 0,
   },
   confirmButtonText: {
+    fontSize: 15,
     color: COLORS.white,
-    fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '700',
   },
 });
 

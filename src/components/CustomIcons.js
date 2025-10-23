@@ -990,6 +990,42 @@ const CustomIcons = {
       />
     </Svg>
   ),
+
+  // Agrega estos dos iconos al final de tu CustomIcons, justo antes del export default:
+
+  Navigation: ({size = 24, color = '#000'}) => (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Polygon
+        points="3 11 22 2 13 21 11 13 3 11"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  ),
+
+  DollarSign: ({size = 24, color = '#000'}) => (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Line
+        x1="12"
+        y1="1"
+        x2="12"
+        y2="23"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <Path
+        d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  ),
 };
 
 export default CustomIcons;

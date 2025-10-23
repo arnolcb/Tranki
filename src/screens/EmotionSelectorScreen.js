@@ -1,5 +1,5 @@
-// src/screens/EmotionSelectorScreen.js - Múltiples registros por día (CORREGIDO)
-import React, { useState, useEffect } from 'react';
+// src/screens/EmotionSelectorScreen.js - Versión con nubes animadas
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -10,16 +10,26 @@ import {
   SafeAreaView,
   ScrollView,
   Animated,
+  Platform,
+  Image,
+  Dimensions,
 } from 'react-native';
 import auth from '@react-native-firebase/auth';
 import { EMOTIONS } from '../constants/emotions';
-import { COLORS, Theme, getEmotionColor, getEmotionBackground, getEmotionIcon } from '../constants/colors';
+import { COLORS, getEmotionColor, getEmotionBackground } from '../constants/colors';
 import { formatDate } from '../utils/dateUtils';
 import FirebaseService from '../services/firebase';
 import CustomIcons from '../components/CustomIcons';
 
-// Convertir EMOTIONS para compatibilidad
+const { width } = Dimensions.get('window');
 const EMOTIONS_ARRAY = [EMOTIONS.STRESSED, EMOTIONS.NEUTRAL, EMOTIONS.TRANKI];
+
+// Mapeo de emociones a imágenes de nubes
+const CLOUD_IMAGES = {
+  stressed: require('../assets/images/nube_estres.png'),
+  neutral: require('../assets/images/nube_neutral.png'),
+  tranki: require('../assets/images/nube_feliz.png'),
+};
 
 const EmotionSelectorScreen = ({ navigation }) => {
   const [selectedEmotion, setSelectedEmotion] = useState(null);
@@ -27,11 +37,19 @@ const EmotionSelectorScreen = ({ navigation }) => {
   const [currentEmotion, setCurrentEmotion] = useState(null);
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [fadeAnim] = useState(new Animated.Value(0));
+  
+  // Animaciones
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const cloudScale = useRef(new Animated.Value(0.8)).current;
+  const cloudFloat = useRef(new Animated.Value(0)).current;
+  const cloudRotate = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     StatusBar.setBarStyle('dark-content');
-    StatusBar.setBackgroundColor(COLORS.white);
+    if (Platform.OS === 'android') {
+      StatusBar.setBackgroundColor('transparent');
+      StatusBar.setTranslucent(true);
+    }
     
     const currentUser = auth().currentUser;
     setUser(currentUser);
@@ -40,11 +58,56 @@ const EmotionSelectorScreen = ({ navigation }) => {
     }
 
     // Animación de entrada
-    Animated.timing(fadeAnim, {
-      toValue: 1,
-      duration: 800,
-      useNativeDriver: true,
-    }).start();
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 600,
+        useNativeDriver: true,
+      }),
+      Animated.spring(cloudScale, {
+        toValue: 1,
+        tension: 50,
+        friction: 7,
+        useNativeDriver: true,
+      }),
+    ]).start();
+
+    // Animación flotante continua de la nube
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(cloudFloat, {
+          toValue: -15,
+          duration: 2000,
+          useNativeDriver: true,
+        }),
+        Animated.timing(cloudFloat, {
+          toValue: 0,
+          duration: 2000,
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
+
+    // Animación sutil de rotación
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(cloudRotate, {
+          toValue: 1,
+          duration: 3000,
+          useNativeDriver: true,
+        }),
+        Animated.timing(cloudRotate, {
+          toValue: -1,
+          duration: 3000,
+          useNativeDriver: true,
+        }),
+        Animated.timing(cloudRotate, {
+          toValue: 0,
+          duration: 3000,
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
   }, []);
 
   const loadTodayEmotions = async (userId) => {
@@ -58,10 +121,10 @@ const EmotionSelectorScreen = ({ navigation }) => {
       setTodayEmotions(todayRecords || []);
       
       if (todayRecords && todayRecords.length > 0) {
-        // Obtener la emoción más reciente
         const latestEmotion = todayRecords[todayRecords.length - 1];
         const emotion = EMOTIONS_ARRAY.find(e => e.id === latestEmotion.emotion);
         setCurrentEmotion(emotion);
+        animateCloudChange();
       }
     } catch (error) {
       console.error('Error loading today emotions:', error);
@@ -70,22 +133,42 @@ const EmotionSelectorScreen = ({ navigation }) => {
     }
   };
 
+  const animateCloudChange = () => {
+    cloudScale.setValue(0.8);
+    Animated.spring(cloudScale, {
+      toValue: 1,
+      tension: 50,
+      friction: 7,
+      useNativeDriver: true,
+    }).start();
+  };
+
   const handleEmotionSelect = (emotion) => {
     setSelectedEmotion(emotion);
+    // Animación al seleccionar
+    Animated.sequence([
+      Animated.timing(cloudScale, {
+        toValue: 1.1,
+        duration: 150,
+        useNativeDriver: true,
+      }),
+      Animated.timing(cloudScale, {
+        toValue: 1,
+        duration: 150,
+        useNativeDriver: true,
+      }),
+    ]).start();
   };
 
   const handleSaveEmotion = async () => {
     if (!selectedEmotion || !user) return;
 
     try {
-      // Guardar nueva emoción
       await FirebaseService.saveEmotion(user.uid, selectedEmotion);
-      
-      // Recargar emociones del día
       await loadTodayEmotions(user.uid);
       
       Alert.alert(
-        '✅ Registrado',
+        'Estado registrado',
         `Has registrado que te sientes ${selectedEmotion.label.toLowerCase()}.`,
         [
           {
@@ -98,7 +181,7 @@ const EmotionSelectorScreen = ({ navigation }) => {
       
       setSelectedEmotion(null);
     } catch (error) {
-      Alert.alert('❌ Error', 'No se pudo guardar tu estado emocional');
+      Alert.alert('Error', 'No se pudo guardar tu estado emocional');
     }
   };
 
@@ -113,9 +196,8 @@ const EmotionSelectorScreen = ({ navigation }) => {
     const today = new Date();
     return today.toLocaleDateString('es-ES', { 
       weekday: 'long', 
-      year: 'numeric', 
-      month: 'long', 
-      day: 'numeric' 
+      day: 'numeric',
+      month: 'long'
     });
   };
 
@@ -128,7 +210,6 @@ const EmotionSelectorScreen = ({ navigation }) => {
 
   const calculateDayAverage = () => {
     if (todayEmotions.length === 0) return null;
-    
     const total = todayEmotions.reduce((sum, record) => sum + record.value, 0);
     return total / todayEmotions.length;
   };
@@ -147,39 +228,126 @@ const EmotionSelectorScreen = ({ navigation }) => {
     });
   };
 
+  const getEmotionDescription = (emotionId) => {
+    const descriptions = {
+      stressed: 'Necesitas apoyo y relajación',
+      neutral: 'Te sientes en equilibrio',
+      tranki: 'Te sientes muy bien hoy'
+    };
+    return descriptions[emotionId] || 'Estado emocional registrado';
+  };
+
+  const getCurrentCloudImage = () => {
+    if (selectedEmotion) {
+      return CLOUD_IMAGES[selectedEmotion.id];
+    }
+    if (currentEmotion) {
+      return CLOUD_IMAGES[currentEmotion.id];
+    }
+    return CLOUD_IMAGES.neutral; // Default
+  };
+
+  const getCloudBackgroundColor = () => {
+    const emotionId = selectedEmotion?.id || currentEmotion?.id || 'neutral';
+    const colors = {
+      stressed: '#FFF4F4',
+      neutral: '#F8FAFE',
+      tranki: '#F0FDF4'
+    };
+    return colors[emotionId];
+  };
+
+  const spin = cloudRotate.interpolate({
+    inputRange: [-1, 1],
+    outputRange: ['-3deg', '3deg']
+  });
+
+  const renderCloudDisplay = () => {
+    return (
+      <Animated.View 
+        style={[
+          styles.cloudContainer,
+          { 
+            backgroundColor: getCloudBackgroundColor(),
+            opacity: fadeAnim,
+          }
+        ]}>
+        <Animated.View
+          style={{
+            transform: [
+              { scale: cloudScale },
+              { translateY: cloudFloat },
+              { rotate: spin }
+            ]
+          }}>
+          <Image
+            source={getCurrentCloudImage()}
+            style={styles.cloudImage}
+            resizeMode="contain"
+          />
+        </Animated.View>
+        
+        {(currentEmotion || selectedEmotion) && (
+          <Animated.View style={[styles.cloudLabel, { opacity: fadeAnim }]}>
+            <Text style={styles.cloudLabelText}>
+              {selectedEmotion?.label || currentEmotion?.label}
+            </Text>
+          </Animated.View>
+        )}
+      </Animated.View>
+    );
+  };
+
   const renderEmotionHistory = () => {
     const history = getEmotionHistory();
-    
     if (history.length === 0) return null;
 
     return (
       <View style={styles.historySection}>
-        <Text style={styles.historyTitle}>📊 Registro de hoy ({history.length})</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.historyScroll}>
+        <View style={styles.historySectionHeader}>
+          <CustomIcons.BarChart size={18} color={COLORS.primary} />
+          <Text style={styles.historyTitle}>
+            Registro de hoy ({history.length})
+          </Text>
+        </View>
+        
+        <ScrollView 
+          horizontal 
+          showsHorizontalScrollIndicator={false} 
+          style={styles.historyScroll}
+          contentContainerStyle={styles.historyScrollContent}>
           {history.map((record, index) => (
-            <View key={record.id || index} style={styles.historyCard}>
-              <View style={[
-                styles.historyEmotionIcon, 
-                { backgroundColor: getEmotionBackground(record.emotion) }
-              ]}>
-                <Text style={styles.historyEmotionEmoji}>
-                  {getEmotionIcon(record.emotion)}
-                </Text>
-              </View>
+            <TouchableOpacity 
+              key={record.id || index} 
+              style={styles.historyCard}
+              activeOpacity={0.7}>
+              <Image
+                source={CLOUD_IMAGES[record.emotion]}
+                style={styles.historyCloudIcon}
+                resizeMode="contain"
+              />
               <Text style={styles.historyEmotionLabel}>
                 {record.emotionData?.label}
               </Text>
               <Text style={styles.historyTime}>{record.timeString}</Text>
-            </View>
+            </TouchableOpacity>
           ))}
         </ScrollView>
         
         {todayEmotions.length > 1 && (
           <View style={styles.averageCard}>
-            <Text style={styles.averageTitle}>📈 Promedio del día</Text>
-            <Text style={styles.averageValue}>
-              {calculateDayAverage()?.toFixed(1)}/3.0
-            </Text>
+            <View style={styles.averageCardLeft}>
+              <Text style={styles.averageTitle}>Promedio del día</Text>
+              <Text style={styles.averageSubtitle}>
+                Basado en {todayEmotions.length} registros
+              </Text>
+            </View>
+            <View style={styles.averageCardRight}>
+              <Text style={styles.averageValue}>
+                {calculateDayAverage()?.toFixed(1)}
+              </Text>
+              <Text style={styles.averageMaxValue}>/3.0</Text>
+            </View>
           </View>
         )}
       </View>
@@ -192,14 +360,11 @@ const EmotionSelectorScreen = ({ navigation }) => {
     return (
       <Animated.View style={[styles.currentStatusCard, { opacity: fadeAnim }]}>
         <View style={styles.currentStatusHeader}>
-          <View style={[
-            styles.currentEmotionIcon,
-            { backgroundColor: getEmotionBackground(currentEmotion.id) }
-          ]}>
-            <Text style={styles.currentEmotionEmoji}>
-              {getEmotionIcon(currentEmotion.id)}
-            </Text>
-          </View>
+          <Image
+            source={CLOUD_IMAGES[currentEmotion.id]}
+            style={styles.currentStatusCloudIcon}
+            resizeMode="contain"
+          />
           <View style={styles.currentStatusInfo}>
             <Text style={styles.currentStatusTitle}>
               ¿Te sigues sintiendo {currentEmotion.label.toLowerCase()}?
@@ -213,19 +378,17 @@ const EmotionSelectorScreen = ({ navigation }) => {
         <View style={styles.currentStatusActions}>
           <TouchableOpacity
             style={[styles.statusActionButton, styles.statusActionYes]}
-            onPress={() => handleSaveEmotion()}
-            activeOpacity={0.8}
-          >
-            <CustomIcons.Check size={16} color={COLORS.white} />
+            onPress={handleSaveEmotion}
+            activeOpacity={0.8}>
+            <CustomIcons.Check size={18} color={COLORS.white} />
             <Text style={styles.statusActionYesText}>Sí, igual</Text>
           </TouchableOpacity>
           
           <TouchableOpacity
             style={[styles.statusActionButton, styles.statusActionNo]}
             onPress={() => setCurrentEmotion(null)}
-            activeOpacity={0.8}
-          >
-            <CustomIcons.X size={16} color={COLORS.primary} />
+            activeOpacity={0.8}>
+            <CustomIcons.X size={18} color={COLORS.primary} />
             <Text style={styles.statusActionNoText}>No, cambió</Text>
           </TouchableOpacity>
         </View>
@@ -237,33 +400,56 @@ const EmotionSelectorScreen = ({ navigation }) => {
     return (
       <SafeAreaView style={styles.loadingContainer}>
         <View style={styles.loadingContent}>
-          <Text style={styles.loadingEmoji}>🌟</Text>
-          <Text style={styles.loadingText}>Cargando tu estado emocional...</Text>
+          <Animated.View style={{ transform: [{ scale: cloudScale }] }}>
+            <Image
+              source={CLOUD_IMAGES.neutral}
+              style={styles.loadingCloudImage}
+              resizeMode="contain"
+            />
+          </Animated.View>
+          <Text style={styles.loadingText}>Cargando tu estado emocional</Text>
         </View>
       </SafeAreaView>
     );
   }
 
-  // Si ya hay registros y no se ha cambiado el estado actual
+  // Vista cuando ya hay registros del día
   if (todayEmotions.length > 0 && currentEmotion && !selectedEmotion) {
     return (
       <SafeAreaView style={styles.container}>
-        <ScrollView showsVerticalScrollIndicator={false}>
+        <ScrollView 
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.scrollContent}>
+          
+          {/* Header */}
           <View style={styles.header}>
-            <Text style={styles.greeting}>{getGreeting()}</Text>
+            <View style={styles.headerTop}>
+              <View style={styles.headerLeft}>
+                <Text style={styles.greeting}>{getGreeting()},</Text>
+                <Text style={styles.userName}>
+                  {user?.displayName?.split(' ')[0] || 'Usuario'}
+                </Text>
+              </View>
+              <TouchableOpacity 
+                style={styles.notificationButton}
+                activeOpacity={0.7}>
+                <CustomIcons.Bell size={22} color={COLORS.textSecondary} />
+              </TouchableOpacity>
+            </View>
             <Text style={styles.dateText}>{getCurrentDate()}</Text>
           </View>
 
+          {renderCloudDisplay()}
           {renderCurrentStatus()}
           {renderEmotionHistory()}
 
+          {/* Action Cards */}
           <View style={styles.actionsSection}>
             <TouchableOpacity
               style={styles.primaryAction}
               onPress={() => navigation.navigate('Chat', { emotion: currentEmotion })}
-              activeOpacity={0.8}
-            >
-              <CustomIcons.Chat size={20} color={COLORS.white} />
+              activeOpacity={0.8}>
+              <CustomIcons.MessageCircle size={22} color={COLORS.white} />
               <Text style={styles.primaryActionText}>Hablar con asistente</Text>
             </TouchableOpacity>
 
@@ -271,19 +457,17 @@ const EmotionSelectorScreen = ({ navigation }) => {
               <TouchableOpacity
                 style={styles.secondaryAction}
                 onPress={() => navigation.navigate('History')}
-                activeOpacity={0.8}
-              >
-                <CustomIcons.BarChart size={16} color={COLORS.blue600} />
-                <Text style={styles.secondaryActionText}>Ver historial</Text>
+                activeOpacity={0.8}>
+                <CustomIcons.BarChart size={20} color={COLORS.primary} />
+                <Text style={styles.secondaryActionText}>Historial</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
                 style={styles.secondaryAction}
                 onPress={() => navigation.navigate('Places', { emotion: currentEmotion })}
-                activeOpacity={0.8}
-              >
-                <CustomIcons.MapPin size={16} color={COLORS.blue600} />
-                <Text style={styles.secondaryActionText}>Lugares cercanos</Text>
+                activeOpacity={0.8}>
+                <CustomIcons.MapPin size={20} color={COLORS.primary} />
+                <Text style={styles.secondaryActionText}>Lugares</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -292,13 +476,36 @@ const EmotionSelectorScreen = ({ navigation }) => {
     );
   }
 
-  // Vista de selección de emoción (primera vez del día o cambio de estado)
+  // Vista de selección de emoción
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView showsVerticalScrollIndicator={false}>
+      <ScrollView 
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}>
+        
+        {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.greeting}>{getGreeting()}</Text>
+          <View style={styles.headerTop}>
+            <View style={styles.headerLeft}>
+              <Text style={styles.greeting}>{getGreeting()},</Text>
+              <Text style={styles.userName}>
+                {user?.displayName?.split(' ')[0] || 'Usuario'}
+              </Text>
+            </View>
+            <TouchableOpacity 
+              style={styles.notificationButton}
+              activeOpacity={0.7}>
+              <CustomIcons.Bell size={22} color={COLORS.textSecondary} />
+            </TouchableOpacity>
+          </View>
           <Text style={styles.dateText}>{getCurrentDate()}</Text>
+        </View>
+
+        {/* Cloud Display - Ahora más prominente */}
+        {renderCloudDisplay()}
+
+        {/* Question Section */}
+        <View style={styles.questionSection}>
           <Text style={styles.question}>
             {todayEmotions.length === 0 
               ? '¿Cómo te sientes hoy?' 
@@ -314,6 +521,7 @@ const EmotionSelectorScreen = ({ navigation }) => {
 
         {renderEmotionHistory()}
 
+        {/* Emotion Cards */}
         <Animated.View style={[styles.emotionsContainer, { opacity: fadeAnim }]}>
           {EMOTIONS_ARRAY.map((emotion) => (
             <TouchableOpacity
@@ -329,14 +537,20 @@ const EmotionSelectorScreen = ({ navigation }) => {
                 ]
               ]}
               onPress={() => handleEmotionSelect(emotion)}
-              activeOpacity={0.7}
-            >
+              activeOpacity={0.7}>
               <View style={styles.emotionCardContent}>
-                <Text style={styles.emotionIcon}>{getEmotionIcon(emotion.id)}</Text>
+                <Image
+                  source={CLOUD_IMAGES[emotion.id]}
+                  style={styles.emotionCardCloudIcon}
+                  resizeMode="contain"
+                />
+                
                 <View style={styles.emotionInfo}>
                   <Text style={[
                     styles.emotionLabel,
-                    selectedEmotion?.id === emotion.id && { color: getEmotionColor(emotion.id) }
+                    selectedEmotion?.id === emotion.id && { 
+                      color: getEmotionColor(emotion.id) 
+                    }
                   ]}>
                     {emotion.label}
                   </Text>
@@ -344,9 +558,13 @@ const EmotionSelectorScreen = ({ navigation }) => {
                     {getEmotionDescription(emotion.id)}
                   </Text>
                 </View>
+                
                 {selectedEmotion?.id === emotion.id && (
-                  <View style={[styles.checkmark, { backgroundColor: getEmotionColor(emotion.id) }]}>
-                    <CustomIcons.Check size={12} color={COLORS.white} />
+                  <View style={[
+                    styles.checkmark, 
+                    { backgroundColor: getEmotionColor(emotion.id) }
+                  ]}>
+                    <CustomIcons.Check size={14} color={COLORS.white} />
                   </View>
                 )}
               </View>
@@ -354,35 +572,37 @@ const EmotionSelectorScreen = ({ navigation }) => {
           ))}
         </Animated.View>
 
+        {/* Confirm Button */}
         {selectedEmotion && (
-          <Animated.View 
-            style={[styles.confirmContainer, { opacity: fadeAnim }]}
-            entering="fadeInUp"
-          >
+          <Animated.View style={[styles.confirmContainer, { opacity: fadeAnim }]}>
             <TouchableOpacity
-              style={[styles.confirmButton, { backgroundColor: getEmotionColor(selectedEmotion.id) }]}
+              style={[
+                styles.confirmButton, 
+                { backgroundColor: getEmotionColor(selectedEmotion.id) }
+              ]}
               onPress={handleSaveEmotion}
-              activeOpacity={0.8}
-            >
-              <CustomIcons.Plus size={16} color={COLORS.white} />
+              activeOpacity={0.8}>
+              <CustomIcons.Check size={20} color={COLORS.white} />
               <Text style={styles.confirmButtonText}>
-                Registrar: Me siento {selectedEmotion.label.toLowerCase()}
+                Registrar estado
               </Text>
             </TouchableOpacity>
           </Animated.View>
         )}
 
-        {/* Tips section */}
-        <View style={styles.tipsSection}>
-          <Text style={styles.tipsTitle}>💡 ¿Sabías que?</Text>
-          <View style={styles.tipsCard}>
-            <Text style={styles.tipsText}>
-              Registrar tus emociones varias veces al día te ayuda a:{'\n'}
-              • Identificar patrones emocionales{'\n'}
-              • Tomar mejores decisiones{'\n'}
-              • Mejorar tu autoconocimiento{'\n'}
-              • Obtener recomendaciones más precisas
-            </Text>
+        {/* Info Card */}
+        <View style={styles.infoSection}>
+          <View style={styles.infoCard}>
+            <View style={styles.infoIconWrapper}>
+              <CustomIcons.Info size={20} color={COLORS.primary} />
+            </View>
+            <View style={styles.infoContent}>
+              <Text style={styles.infoTitle}>¿Por qué registrar?</Text>
+              <Text style={styles.infoText}>
+                Registrar tus emociones te ayuda a identificar patrones, 
+                tomar mejores decisiones y mejorar tu bienestar emocional.
+              </Text>
+            </View>
           </View>
         </View>
       </ScrollView>
@@ -390,352 +610,448 @@ const EmotionSelectorScreen = ({ navigation }) => {
   );
 };
 
-const getEmotionDescription = (emotionId) => {
-  const descriptions = {
-    stressed: 'Necesitas apoyo y relajación',
-    neutral: 'Te sientes en equilibrio',
-    tranki: 'Te sientes muy bien hoy'
-  };
-  return descriptions[emotionId] || 'Estado emocional registrado';
-};
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: '#FFFFFF',
+  },
+  scrollContent: {
+    flexGrow: 1,
+    paddingTop: Platform.OS === 'ios' ? 60 : 80,
+    paddingBottom: 100,
   },
   
+  // Loading
   loadingContainer: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: '#FFFFFF',
     justifyContent: 'center',
     alignItems: 'center',
   },
   loadingContent: {
     alignItems: 'center',
   },
-  loadingEmoji: {
-    fontSize: 48,
-    marginBottom: Theme.spacing.lg,
+  loadingCloudImage: {
+    width: 120,
+    height: 120,
+    marginBottom: 20,
   },
   loadingText: {
-    fontSize: Theme.typography.body,
+    fontSize: 15,
     color: COLORS.textSecondary,
     fontWeight: '500',
   },
   
-  // Header
-  header: {
-    paddingHorizontal: Theme.spacing.xl,
-    paddingTop: Theme.spacing.xl,
-    paddingBottom: Theme.spacing.xxxl,
+  // Cloud Display
+  cloudContainer: {
+    marginHorizontal: 24,
+    borderRadius: 24,
+    padding: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 32,
+    minHeight: 200,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 0, 0, 0.05)',
   },
-  greeting: {
-    fontSize: Theme.typography.h1,
+  cloudImage: {
+    width: width * 0.5,
+    height: width * 0.35,
+  },
+  cloudLabel: {
+    marginTop: 16,
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 0, 0, 0.08)',
+  },
+  cloudLabelText: {
+    fontSize: 16,
     fontWeight: '700',
-    color: COLORS.text,
-    marginBottom: Theme.spacing.sm,
-  },
-  dateText: {
-    fontSize: Theme.typography.body,
-    color: COLORS.textMuted,
-    marginBottom: Theme.spacing.xl,
-    textTransform: 'capitalize',
-  },
-  question: {
-    fontSize: Theme.typography.h3,
-    fontWeight: '600',
-    color: COLORS.text,
-    marginBottom: Theme.spacing.sm,
-  },
-  questionSubtitle: {
-    fontSize: Theme.typography.caption,
-    color: COLORS.textSecondary,
-    fontStyle: 'italic',
+    color: '#1A1A1A',
   },
   
-  // Current status card
-  currentStatusCard: {
-    marginHorizontal: Theme.spacing.xl,
-    backgroundColor: COLORS.white,
-    borderRadius: Theme.borderRadius.large,
-    padding: Theme.spacing.xl,
-    marginBottom: Theme.spacing.xl,
+  // Header
+  header: {
+    paddingHorizontal: 24,
+    marginBottom: 24,
+  },
+  headerTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+  },
+  headerLeft: {
+    flex: 1,
+  },
+  greeting: {
+    fontSize: 32,
+    fontWeight: '700',
+    color: '#1A1A1A',
+    letterSpacing: -0.5,
+  },
+  userName: {
+    fontSize: 32,
+    fontWeight: '300',
+    color: '#1A1A1A',
+    letterSpacing: -0.5,
+  },
+  dateText: {
+    fontSize: 14,
+    color: '#6B7280',
+    textTransform: 'capitalize',
+    fontWeight: '500',
+  },
+  notificationButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#F9FAFB',
+    justifyContent: 'center',
+    alignItems: 'center',
     borderWidth: 1,
-    borderColor: COLORS.border,
-    ...Theme.shadows.medium,
+    borderColor: '#E5E7EB',
+  },
+  
+  // Question
+  questionSection: {
+    paddingHorizontal: 24,
+    marginBottom: 28,
+  },
+  question: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#1A1A1A',
+    marginBottom: 6,
+    letterSpacing: -0.3,
+  },
+  questionSubtitle: {
+    fontSize: 14,
+    color: '#6B7280',
+  },
+  
+  // Current Status Card
+  currentStatusCard: {
+    marginHorizontal: 24,
+    backgroundColor: '#F9FAFB',
+    borderRadius: 20,
+    padding: 20,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
   },
   currentStatusHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: Theme.spacing.lg,
+    marginBottom: 16,
   },
-  currentEmotionIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: Theme.spacing.md,
-  },
-  currentEmotionEmoji: {
-    fontSize: 24,
+  currentStatusCloudIcon: {
+    width: 56,
+    height: 56,
+    marginRight: 12,
   },
   currentStatusInfo: {
     flex: 1,
   },
   currentStatusTitle: {
-    fontSize: Theme.typography.h4,
+    fontSize: 16,
     fontWeight: '600',
-    color: COLORS.text,
-    marginBottom: Theme.spacing.xs,
+    color: '#1A1A1A',
+    marginBottom: 4,
   },
   currentStatusSubtitle: {
-    fontSize: Theme.typography.caption,
-    color: COLORS.textSecondary,
+    fontSize: 13,
+    color: '#6B7280',
   },
   currentStatusActions: {
     flexDirection: 'row',
-    gap: Theme.spacing.md,
+    gap: 12,
   },
   statusActionButton: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: Theme.spacing.md,
-    paddingHorizontal: Theme.spacing.lg,
-    borderRadius: Theme.borderRadius.medium,
-    gap: 6,
+    paddingVertical: 12,
+    borderRadius: 12,
+    gap: 8,
   },
   statusActionYes: {
-    backgroundColor: COLORS.success,
+    backgroundColor: '#10B981',
   },
   statusActionNo: {
-    backgroundColor: COLORS.white,
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: COLORS.primary,
   },
   statusActionYesText: {
-    color: COLORS.white,
-    fontSize: Theme.typography.body,
+    color: '#FFFFFF',
+    fontSize: 15,
     fontWeight: '600',
   },
   statusActionNoText: {
     color: COLORS.primary,
-    fontSize: Theme.typography.body,
+    fontSize: 15,
     fontWeight: '600',
   },
   
-  // History section
+  // History Section
   historySection: {
-    marginHorizontal: Theme.spacing.xl,
-    marginBottom: Theme.spacing.xl,
+    paddingLeft: 24,
+    marginBottom: 32,
+  },
+  historySectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+    paddingRight: 24,
+    gap: 8,
   },
   historyTitle: {
-    fontSize: Theme.typography.h5,
-    fontWeight: '600',
-    color: COLORS.text,
-    marginBottom: Theme.spacing.md,
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1A1A1A',
   },
   historyScroll: {
-    marginBottom: Theme.spacing.lg,
+    marginBottom: 16,
+  },
+  historyScrollContent: {
+    paddingRight: 24,
   },
   historyCard: {
-    backgroundColor: COLORS.white,
-    borderRadius: Theme.borderRadius.medium,
-    padding: Theme.spacing.md,
-    marginRight: Theme.spacing.md,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 16,
+    marginRight: 12,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: COLORS.border,
-    minWidth: 80,
-    ...Theme.shadows.small,
+    borderColor: '#E5E7EB',
+    minWidth: 90,
+    shadowColor: '#000',
+    shadowOffset: {width: 0, height: 1},
+    shadowOpacity: 0.03,
+    shadowRadius: 4,
+    elevation: 1,
   },
-  historyEmotionIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: Theme.spacing.sm,
-  },
-  historyEmotionEmoji: {
-    fontSize: 16,
+  historyCloudIcon: {
+    width: 48,
+    height: 48,
+    marginBottom: 8,
   },
   historyEmotionLabel: {
-    fontSize: Theme.typography.small,
+    fontSize: 13,
     fontWeight: '600',
-    color: COLORS.text,
+    color: '#1A1A1A',
     textAlign: 'center',
-    marginBottom: Theme.spacing.xs,
+    marginBottom: 4,
   },
   historyTime: {
-    fontSize: Theme.typography.small,
-    color: COLORS.textMuted,
-    textAlign: 'center',
+    fontSize: 12,
+    color: '#6B7280',
   },
   averageCard: {
-    backgroundColor: COLORS.blue50,
-    borderRadius: Theme.borderRadius.medium,
-    padding: Theme.spacing.md,
+    backgroundColor: '#EBF5FB',
+    borderRadius: 16,
+    padding: 16,
+    marginRight: 24,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: COLORS.blue200,
+    borderColor: '#7DB9DE40',
+  },
+  averageCardLeft: {
+    flex: 1,
   },
   averageTitle: {
-    fontSize: Theme.typography.body,
+    fontSize: 14,
     fontWeight: '600',
-    color: COLORS.blue600,
+    color: COLORS.primary,
+    marginBottom: 2,
+  },
+  averageSubtitle: {
+    fontSize: 12,
+    color: '#5A9AB8',
+  },
+  averageCardRight: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
   },
   averageValue: {
-    fontSize: Theme.typography.h4,
+    fontSize: 28,
     fontWeight: '700',
-    color: COLORS.blue600,
+    color: COLORS.primary,
+  },
+  averageMaxValue: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#7DB9DE',
+    marginLeft: 2,
   },
   
-  // Emotions grid
+  // Emotions Container
   emotionsContainer: {
-    paddingHorizontal: Theme.spacing.xl,
-    gap: Theme.spacing.md,
-    marginBottom: Theme.spacing.xl,
+    paddingHorizontal: 24,
+    gap: 12,
+    marginBottom: 20,
   },
   emotionCard: {
-    backgroundColor: COLORS.surface,
-    borderRadius: Theme.borderRadius.large,
-    padding: Theme.spacing.lg,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 18,
     borderWidth: 1.5,
-    borderColor: COLORS.borderLight,
-    ...Theme.shadows.small,
+    borderColor: '#E5E7EB',
+    shadowColor: '#000',
+    shadowOffset: {width: 0, height: 1},
+    shadowOpacity: 0.03,
+    shadowRadius: 4,
+    elevation: 1,
   },
   emotionCardSelected: {
     borderWidth: 2,
-    ...Theme.shadows.medium,
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
   },
   emotionCardContent: {
     flexDirection: 'row',
     alignItems: 'center',
   },
-  emotionIcon: {
-    fontSize: 32,
-    marginRight: Theme.spacing.lg,
+  emotionCardCloudIcon: {
+    width: 56,
+    height: 56,
+    marginRight: 16,
   },
   emotionInfo: {
     flex: 1,
   },
   emotionLabel: {
-    fontSize: Theme.typography.h4,
+    fontSize: 17,
     fontWeight: '600',
-    color: COLORS.text,
-    marginBottom: Theme.spacing.xs,
+    color: '#1A1A1A',
+    marginBottom: 4,
   },
   emotionDescription: {
-    fontSize: Theme.typography.caption,
-    color: COLORS.textMuted,
-    lineHeight: 16,
+    fontSize: 13,
+    color: '#6B7280',
+    lineHeight: 18,
   },
   checkmark: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     justifyContent: 'center',
     alignItems: 'center',
   },
   
-  // Actions section
+  // Actions
   actionsSection: {
-    paddingHorizontal: Theme.spacing.xl,
-    marginBottom: Theme.spacing.xl,
+    paddingHorizontal: 24,
+    marginBottom: 32,
   },
   primaryAction: {
     backgroundColor: COLORS.primary,
-    paddingVertical: Theme.spacing.lg,
-    paddingHorizontal: Theme.spacing.xl,
-    borderRadius: Theme.borderRadius.medium,
+    paddingVertical: 16,
+    borderRadius: 16,
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'center',
-    gap: 8,
-    marginBottom: Theme.spacing.lg,
-    ...Theme.shadows.blue,
+    gap: 10,
+    marginBottom: 12,
+    shadowColor: COLORS.primary,
+    shadowOffset: {width: 0, height: 4},
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 6,
   },
   primaryActionText: {
-    color: COLORS.white,
-    fontSize: Theme.typography.h5,
-    fontWeight: '600',
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
+    letterSpacing: -0.2,
   },
   secondaryActions: {
     flexDirection: 'row',
-    gap: Theme.spacing.md,
+    gap: 12,
   },
   secondaryAction: {
     flex: 1,
-    backgroundColor: COLORS.blue50,
-    paddingVertical: Theme.spacing.lg,
-    paddingHorizontal: Theme.spacing.md,
-    borderRadius: Theme.borderRadius.medium,
+    backgroundColor: '#F9FAFB',
+    paddingVertical: 16,
+    borderRadius: 16,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: COLORS.blue200,
-    flexDirection: 'row',
-    justifyContent: 'center',
+    borderColor: '#E5E7EB',
     gap: 6,
   },
   secondaryActionText: {
-    color: COLORS.blue600,
-    fontSize: Theme.typography.caption,
-    fontWeight: '500',
-    textAlign: 'center',
+    color: COLORS.primary,
+    fontSize: 13,
+    fontWeight: '600',
   },
   
-  // Confirmation
+  // Confirm
   confirmContainer: {
-    paddingHorizontal: Theme.spacing.xl,
-    marginBottom: Theme.spacing.xl,
+    paddingHorizontal: 24,
+    marginBottom: 24,
   },
   confirmButton: {
-    paddingVertical: Theme.spacing.lg,
-    paddingHorizontal: Theme.spacing.xl,
-    borderRadius: Theme.borderRadius.medium,
+    paddingVertical: 16,
+    borderRadius: 16,
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'center',
-    gap: 8,
-    ...Theme.shadows.medium,
+    gap: 10,
+    shadowColor: '#000',
+    shadowOffset: {width: 0, height: 4},
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 6,
   },
   confirmButtonText: {
-    color: COLORS.white,
-    fontSize: Theme.typography.h5,
-    fontWeight: '600',
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
   },
   
-  // Tips section
-  tipsSection: {
-    marginHorizontal: Theme.spacing.xl,
-    marginBottom: Theme.spacing.xxxl,
+  // Info Section
+  infoSection: {
+    paddingHorizontal: 24,
+    marginBottom: 32,
   },
-  tipsTitle: {
-    fontSize: Theme.typography.h5,
-    fontWeight: '600',
-    color: COLORS.text,
-    marginBottom: Theme.spacing.md,
-  },
-  tipsCard: {
-    backgroundColor: COLORS.white,
-    padding: Theme.spacing.lg,
-    borderRadius: Theme.borderRadius.large,
-    borderLeftWidth: 4,
-    borderLeftColor: COLORS.primary,
+  infoCard: {
+    backgroundColor: '#F0F9FF',
+    padding: 18,
+    borderRadius: 16,
+    flexDirection: 'row',
     borderWidth: 1,
-    borderColor: COLORS.border,
-    ...Theme.shadows.small,
+    borderColor: '#7DB9DE40',
+    gap: 12,
   },
-  tipsText: {
-    fontSize: Theme.typography.body,
-    color: COLORS.textSecondary,
-    lineHeight: 20,
+  infoIconWrapper: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(125, 185, 222, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  infoContent: {
+    flex: 1,
+  },
+  infoTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: COLORS.primary,
+    marginBottom: 4,
+  },
+  infoText: {
+    fontSize: 13,
+    color: '#5A9AB8',
+    lineHeight: 18,
   },
 });
 

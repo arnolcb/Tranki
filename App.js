@@ -3,7 +3,7 @@ import {NavigationContainer} from '@react-navigation/native';
 import {createStackNavigator} from '@react-navigation/stack';
 import {createBottomTabNavigator} from '@react-navigation/bottom-tabs';
 import auth from '@react-native-firebase/auth';
-import {ActivityIndicator, View, StyleSheet} from 'react-native';
+import {ActivityIndicator, View, StyleSheet, Platform, TouchableOpacity} from 'react-native';
 
 import AuthScreen from './src/screens/AuthScreen';
 import EmotionSelectorScreen from './src/screens/EmotionSelectorScreen';
@@ -24,46 +24,71 @@ import {COLORS} from './src/constants/colors';
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
 
-// Configuración de tabs principales con diseño profesional usando solo texto
 function MainTabs() {
   return (
     <Tab.Navigator
       screenOptions={({route}) => ({
         headerShown: false,
-        tabBarActiveTintColor: COLORS.primary,
-        tabBarInactiveTintColor: COLORS.textMuted,
+        tabBarShowLabel: false,
         tabBarStyle: {
           backgroundColor: COLORS.white,
           borderTopWidth: 0,
-          elevation: 10,
+          elevation: 20,
+          shadowColor: '#000',
           shadowOffset: {
             width: 0,
-            height: -2,
+            height: -8,
           },
-          shadowOpacity: 0.1,
-          shadowRadius: 8,
-          paddingBottom: 8,
-          paddingTop: 8,
-          height: 70,
+          shadowOpacity: 0.12,
+          shadowRadius: 16,
+          paddingBottom: Platform.OS === 'ios' ? 20 : 8,
+          paddingTop: 12,
+          height: Platform.OS === 'ios' ? 90 : 70,
+          position: 'absolute',
         },
-        tabBarLabelStyle: {
-          fontSize: 11,
-          fontWeight: '600',
-          marginTop: 4,
-        },
-        tabBarIcon: ({focused, color}) => {
+        tabBarButton: (props) => (
+          <TouchableOpacity
+            {...props}
+            activeOpacity={1}
+          />
+        ),
+        tabBarIcon: ({focused}) => {
           let IconComponent;
-          const iconSize = 22;
+          const iconSize = 26;
+          const isChatButton = route.name === 'Chat';
 
+          // Botón central MEGA llamativo
+          if (isChatButton) {
+            return (
+              <View style={{
+                position: 'absolute',
+                top: -28,
+                width: 70,
+                height: 70,
+                borderRadius: 35,
+                backgroundColor: COLORS.primary,
+                justifyContent: 'center',
+                alignItems: 'center',
+                shadowColor: COLORS.primary,
+                shadowOffset: {width: 0, height: 10},
+                shadowOpacity: 0.5,
+                shadowRadius: 20,
+                elevation: 15,
+                borderWidth: 5,
+                borderColor: COLORS.white,
+              }}>
+                <CustomIcons.MessageCircle size={32} color={COLORS.white} />
+              </View>
+            );
+          }
+
+          // Iconos normales con animación
           switch (route.name) {
             case 'EmotionSelector':
               IconComponent = CustomIcons.Home;
               break;
-            case 'History':
-              IconComponent = CustomIcons.Analytics;
-              break;
             case 'Places':
-              IconComponent = CustomIcons.Location;
+              IconComponent = CustomIcons.MapPin;
               break;
             case 'Schedule':
               IconComponent = CustomIcons.Calendar;
@@ -76,18 +101,18 @@ function MainTabs() {
           }
 
           return (
-            <View
-              style={{
-                backgroundColor: focused ? COLORS.blue50 : 'transparent',
-                paddingHorizontal: 16,
-                paddingVertical: 6,
-                borderRadius: 20,
-                minWidth: 50,
-                alignItems: 'center',
-              }}>
+            <View style={{
+              width: 50,
+              height: 50,
+              borderRadius: 25,
+              backgroundColor: focused ? COLORS.primary + '15' : 'transparent',
+              justifyContent: 'center',
+              alignItems: 'center',
+              overflow: 'hidden',
+            }}>
               <IconComponent
-                size={iconSize}
-                color={focused ? COLORS.primary : color}
+                size={28}
+                color={focused ? COLORS.primary : '#9CA3AF'}
               />
             </View>
           );
@@ -96,37 +121,30 @@ function MainTabs() {
       <Tab.Screen
         name="EmotionSelector"
         component={EmotionSelectorScreen}
-        options={{
-          tabBarLabel: 'Inicio',
-        }}
-      />
-      <Tab.Screen
-        name="History"
-        component={HistoryScreen}
-        options={{
-          tabBarLabel: 'Historial',
-        }}
       />
       <Tab.Screen
         name="Places"
         component={PlacesScreen}
-        options={{
-          tabBarLabel: 'Lugares',
-        }}
+      />
+      <Tab.Screen
+        name="Chat"
+        component={ChatScreen}
+        listeners={({navigation}) => ({
+          tabPress: (e) => {
+            e.preventDefault();
+            navigation.navigate('Chat', {
+              emotion: null,
+            });
+          },
+        })}
       />
       <Tab.Screen
         name="Schedule"
         component={ScheduleScreen}
-        options={{
-          tabBarLabel: 'Horarios',
-        }}
       />
       <Tab.Screen
         name="Profile"
         component={ProfileScreen}
-        options={{
-          tabBarLabel: 'Perfil',
-        }}
       />
     </Tab.Navigator>
   );
@@ -136,26 +154,33 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [initializing, setInitializing] = useState(true);
 
-  // Manejar cambios de estado de autenticación
   function onAuthStateChanged(user) {
     setUser(user);
     if (initializing) setInitializing(false);
   }
 
   useEffect(() => {
-    // Test de Cloudinary
     ImageService.testConnection().then(result => {
       console.log('📸 Cloudinary test:', result);
     });
 
     const subscriber = auth().onAuthStateChanged(onAuthStateChanged);
-    return subscriber; // unsubscribe on unmount
+    return subscriber;
   }, []);
 
   if (initializing) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={COLORS.primary} />
+        <View style={styles.loadingContent}>
+          <View style={styles.logoCircle}>
+            <View style={styles.logoInner} />
+          </View>
+          <ActivityIndicator 
+            size="large" 
+            color={COLORS.primary} 
+            style={styles.spinner}
+          />
+        </View>
       </View>
     );
   }
@@ -167,7 +192,7 @@ export default function App() {
           <>
             <Stack.Screen name="Main" component={MainTabs} />
             <Stack.Screen name="Chat" component={ChatScreen} />
-            {/* AGREGAR ESTAS 3 LÍNEAS: */}
+            <Stack.Screen name="History" component={HistoryScreen} />
             <Stack.Screen name="Friends" component={FriendsScreen} />
             <Stack.Screen name="SearchFriends" component={SearchFriendsScreen} />
             <Stack.Screen name="SocialFeed" component={SocialFeedScreen} />
@@ -185,6 +210,32 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: COLORS.background,
+    backgroundColor: '#F0F4F8',
+  },
+  loadingContent: {
+    alignItems: 'center',
+  },
+  logoCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: COLORS.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 24,
+    shadowColor: COLORS.primary,
+    shadowOffset: {width: 0, height: 4},
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  logoInner: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+  },
+  spinner: {
+    marginTop: 8,
   },
 });

@@ -1,4 +1,4 @@
-// src/screens/HistoryScreen.js - Actualizado con flecha SVG
+// src/screens/HistoryScreen.js - Rediseño profesional
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -10,10 +10,12 @@ import {
   ActivityIndicator,
   SafeAreaView,
   StatusBar,
+  Animated,
+  Platform,
 } from 'react-native';
 import { LineChart } from 'react-native-chart-kit';
 import auth from '@react-native-firebase/auth';
-import { COLORS, Theme, getEmotionColor, getEmotionIcon } from '../constants/colors';
+import { COLORS } from '../constants/colors';
 import { EMOTIONS } from '../constants/emotions';
 import FirebaseService from '../services/firebase';
 import CustomIcons from '../components/CustomIcons';
@@ -23,14 +25,18 @@ const { width } = Dimensions.get('window');
 const HistoryScreen = ({ navigation }) => {
   const [emotionHistory, setEmotionHistory] = useState([]);
   const [filteredData, setFilteredData] = useState([]);
-  const [filter, setFilter] = useState('week'); // 'week', 'month'
+  const [filter, setFilter] = useState('week');
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState(null);
   const [insights, setInsights] = useState(null);
+  const [fadeAnim] = useState(new Animated.Value(0));
 
   useEffect(() => {
     StatusBar.setBarStyle('dark-content');
-    StatusBar.setBackgroundColor(COLORS.white);
+    if (Platform.OS === 'android') {
+      StatusBar.setBackgroundColor('transparent');
+      StatusBar.setTranslucent(true);
+    }
     
     const currentUser = auth().currentUser;
     setUser(currentUser);
@@ -38,6 +44,12 @@ const HistoryScreen = ({ navigation }) => {
       loadEmotionHistory(currentUser.uid);
       loadInsights(currentUser.uid);
     }
+
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 600,
+      useNativeDriver: true,
+    }).start();
   }, []);
 
   useEffect(() => {
@@ -94,7 +106,7 @@ const HistoryScreen = ({ navigation }) => {
         labels: ['Sin datos'],
         datasets: [{
           data: [0],
-          color: () => COLORS.textMuted,
+          color: () => '#D1D5DB',
         }]
       };
     }
@@ -110,7 +122,7 @@ const HistoryScreen = ({ navigation }) => {
       labels: labels.slice(-7),
       datasets: [{
         data: data.slice(-7),
-        color: (opacity = 1) => `rgba(59, 130, 246, ${opacity})`,
+        color: (opacity = 1) => `rgba(125, 185, 222, ${opacity})`,
         strokeWidth: 3
       }]
     };
@@ -146,17 +158,44 @@ const HistoryScreen = ({ navigation }) => {
     };
   };
 
+  const getEmotionColor = (emotionId) => {
+    const colors = {
+      stressed: '#EF4444',
+      neutral: '#F59E0B',
+      tranki: '#10B981'
+    };
+    return colors[emotionId] || '#6B7280';
+  };
+
+  const getEmotionIcon = (emotionId) => {
+    const icons = {
+      stressed: '😰',
+      neutral: '😐',
+      tranki: '😊'
+    };
+    return icons[emotionId] || '😐';
+  };
+
   const renderEmotionStat = (emotionId, count, percentage) => {
     const emotion = Object.values(EMOTIONS).find(e => e.id === emotionId);
     if (!emotion) return null;
 
     return (
       <View key={emotionId} style={styles.emotionStatCard}>
-        <View style={[styles.emotionStatIcon, { backgroundColor: getEmotionColor(emotionId) + '20' }]}>
-          <Text style={styles.emotionStatEmoji}>{getEmotionIcon(emotionId)}</Text>
+        <View style={[
+          styles.emotionStatIcon, 
+          { backgroundColor: getEmotionColor(emotionId) + '20' }
+        ]}>
+          <View style={[
+            styles.emotionStatDot,
+            { backgroundColor: getEmotionColor(emotionId) }
+          ]} />
         </View>
         <Text style={styles.emotionStatLabel}>{emotion.label}</Text>
-        <Text style={[styles.emotionStatPercentage, { color: getEmotionColor(emotionId) }]}>
+        <Text style={[
+          styles.emotionStatPercentage, 
+          { color: getEmotionColor(emotionId) }
+        ]}>
           {percentage}%
         </Text>
         <Text style={styles.emotionStatCount}>{count} días</Text>
@@ -168,11 +207,18 @@ const HistoryScreen = ({ navigation }) => {
     const stats = getEmotionStats();
     if (!stats) return null;
 
-    const mostFrequentEmotion = Object.values(EMOTIONS).find(e => e.id === stats.mostFrequent);
+    const mostFrequentEmotion = Object.values(EMOTIONS).find(
+      e => e.id === stats.mostFrequent
+    );
     
     return (
       <View style={styles.insightsSection}>
-        <Text style={styles.sectionTitle}>📈 Resumen del período</Text>
+        <View style={styles.sectionHeader}>
+          <View style={styles.sectionIconWrapper}>
+            <CustomIcons.BarChart size={18} color={COLORS.primary} />
+          </View>
+          <Text style={styles.sectionTitle}>Resumen del período</Text>
+        </View>
         
         <View style={styles.emotionStatsGrid}>
           {Object.keys(stats.counts).map(emotionId => 
@@ -184,30 +230,44 @@ const HistoryScreen = ({ navigation }) => {
           )}
         </View>
 
-        {/* Insights AI */}
+        {/* AI Insights */}
         {insights && (
           <View style={styles.aiInsightsSection}>
-            <Text style={styles.aiInsightsTitle}>🧠 Insights personalizados</Text>
+            <View style={styles.aiInsightsHeader}>
+              <View style={styles.aiIconWrapper}>
+                <CustomIcons.TrendingUp size={16} color={COLORS.primary} />
+              </View>
+              <Text style={styles.aiInsightsTitle}>Insights personalizados</Text>
+            </View>
             
             {insights.warnings?.map((warning, index) => (
               <View key={index} style={[styles.insightCard, styles.warningInsight]}>
-                <Text style={styles.warningInsightTitle}>⚠️ {warning.message}</Text>
+                <View style={styles.insightCardHeader}>
+                  <CustomIcons.AlertCircle size={16} color="#F59E0B" />
+                  <Text style={styles.warningInsightTitle}>{warning.message}</Text>
+                </View>
                 <Text style={styles.warningInsightText}>{warning.suggestion}</Text>
               </View>
             ))}
 
             {insights.recommendations?.map((rec, index) => (
               <View key={index} style={[styles.insightCard, styles.recommendationInsight]}>
-                <Text style={styles.recommendationInsightTitle}>💡 {rec.message}</Text>
+                <View style={styles.insightCardHeader}>
+                  <CustomIcons.Info size={16} color={COLORS.primary} />
+                  <Text style={styles.recommendationInsightTitle}>{rec.message}</Text>
+                </View>
                 <Text style={styles.recommendationInsightText}>{rec.suggestion}</Text>
               </View>
             ))}
 
             {insights.overallTrend && (
               <View style={styles.trendCard}>
-                <Text style={styles.trendTitle}>
-                  📊 Tendencia: {getTrendText(insights.overallTrend)}
-                </Text>
+                <View style={styles.trendHeader}>
+                  <CustomIcons.TrendingUp size={18} color={COLORS.primary} />
+                  <Text style={styles.trendTitle}>
+                    Tendencia: {getTrendText(insights.overallTrend)}
+                  </Text>
+                </View>
                 <Text style={styles.trendDescription}>
                   {getTrendDescription(insights.overallTrend)}
                 </Text>
@@ -216,14 +276,24 @@ const HistoryScreen = ({ navigation }) => {
           </View>
         )}
 
-        <View style={styles.insightCard}>
-          <Text style={styles.insightTitle}>Tu estado más frecuente</Text>
-          <View style={styles.insightContent}>
-            <Text style={styles.insightEmoji}>{getEmotionIcon(mostFrequentEmotion?.id)}</Text>
-            <View style={styles.insightInfo}>
-              <Text style={styles.insightText}>
-                En los últimos {filter === 'week' ? '7 días' : '30 días'}, te has sentido más frecuentemente{' '}
-                <Text style={[styles.insightEmotionText, { color: getEmotionColor(mostFrequentEmotion?.id) }]}>
+        <View style={styles.mainInsightCard}>
+          <View style={styles.mainInsightHeader}>
+            <View style={[
+              styles.mainInsightIcon,
+              { backgroundColor: getEmotionColor(mostFrequentEmotion?.id) + '20' }
+            ]}>
+              <Text style={styles.mainInsightEmoji}>
+                {getEmotionIcon(mostFrequentEmotion?.id)}
+              </Text>
+            </View>
+            <View style={styles.mainInsightInfo}>
+              <Text style={styles.mainInsightTitle}>Tu estado más frecuente</Text>
+              <Text style={styles.mainInsightText}>
+                En los últimos {filter === 'week' ? '7 días' : '30 días'}, te has sentido más{' '}
+                <Text style={[
+                  styles.mainInsightEmotionText, 
+                  { color: getEmotionColor(mostFrequentEmotion?.id) }
+                ]}>
                   {mostFrequentEmotion?.label.toLowerCase()}
                 </Text>
               </Text>
@@ -233,7 +303,10 @@ const HistoryScreen = ({ navigation }) => {
 
         {stats.percentages.tranki >= 60 && (
           <View style={[styles.insightCard, styles.positiveInsight]}>
-            <Text style={styles.positiveInsightTitle}>¡Excelente progreso! 🎉</Text>
+            <View style={styles.insightCardHeader}>
+              <CustomIcons.Heart size={16} color="#10B981" />
+              <Text style={styles.positiveInsightTitle}>¡Excelente progreso!</Text>
+            </View>
             <Text style={styles.positiveInsightText}>
               Has tenido un {stats.percentages.tranki}% de días positivos. Sigue así.
             </Text>
@@ -242,7 +315,10 @@ const HistoryScreen = ({ navigation }) => {
 
         {stats.percentages.stressed >= 50 && (
           <View style={[styles.insightCard, styles.concernInsight]}>
-            <Text style={styles.concernInsightTitle}>Cuidemos tu bienestar</Text>
+            <View style={styles.insightCardHeader}>
+              <CustomIcons.AlertCircle size={16} color="#F59E0B" />
+              <Text style={styles.concernInsightTitle}>Cuidemos tu bienestar</Text>
+            </View>
             <Text style={styles.concernInsightText}>
               Has tenido varios días difíciles. ¿Te gustaría hablar con el asistente?
             </Text>
@@ -251,7 +327,7 @@ const HistoryScreen = ({ navigation }) => {
               onPress={() => navigation.navigate('Chat', { emotion: EMOTIONS.STRESSED })}
               activeOpacity={0.8}
             >
-              <CustomIcons.Chat size={16} color={COLORS.white} />
+              <CustomIcons.MessageCircle size={16} color={COLORS.white} />
               <Text style={styles.chatButtonText}>Buscar apoyo</Text>
             </TouchableOpacity>
           </View>
@@ -262,9 +338,9 @@ const HistoryScreen = ({ navigation }) => {
 
   const getTrendText = (trend) => {
     const trends = {
-      improving: 'Mejorando ⬆️',
-      declining: 'Declinando ⬇️',
-      stable: 'Estable ➡️',
+      improving: 'Mejorando',
+      declining: 'Declinando',
+      stable: 'Estable',
       insufficient_data: 'Datos insuficientes'
     };
     return trends[trend] || 'Desconocido';
@@ -283,8 +359,12 @@ const HistoryScreen = ({ navigation }) => {
   if (loading) {
     return (
       <SafeAreaView style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={COLORS.primary} />
-        <Text style={styles.loadingText}>Cargando tu historial...</Text>
+        <View style={styles.loadingContent}>
+          <View style={styles.loadingCircle}>
+            <ActivityIndicator size="large" color={COLORS.white} />
+          </View>
+          <Text style={styles.loadingText}>Cargando tu historial...</Text>
+        </View>
       </SafeAreaView>
     );
   }
@@ -293,30 +373,41 @@ const HistoryScreen = ({ navigation }) => {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Header actualizado */}
+      <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
+      
+      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.backButton}
           onPress={() => navigation.goBack()}
           activeOpacity={0.7}
         >
-          <CustomIcons.ArrowLeft size={20} color={COLORS.text} />
+          <CustomIcons.ArrowLeft size={22} color={COLORS.text} />
         </TouchableOpacity>
+        
         <View style={styles.headerInfo}>
           <Text style={styles.headerTitle}>Mi Historial</Text>
           <Text style={styles.headerSubtitle}>Seguimiento emocional</Text>
         </View>
-        <TouchableOpacity style={styles.headerAction}>
-          <CustomIcons.Download size={18} color={COLORS.textMuted} />
+
+        <TouchableOpacity style={styles.headerAction} activeOpacity={0.7}>
+          <CustomIcons.Download size={18} color={COLORS.textSecondary} />
         </TouchableOpacity>
       </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView 
+        style={styles.content} 
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
+      >
         {/* Filter */}
         <View style={styles.filterSection}>
           <View style={styles.filterContainer}>
             <TouchableOpacity
-              style={[styles.filterButton, filter === 'week' && styles.filterButtonActive]}
+              style={[
+                styles.filterButton, 
+                filter === 'week' && styles.filterButtonActive
+              ]}
               onPress={() => setFilter('week')}
               activeOpacity={0.8}
             >
@@ -329,7 +420,10 @@ const HistoryScreen = ({ navigation }) => {
             </TouchableOpacity>
             
             <TouchableOpacity
-              style={[styles.filterButton, filter === 'month' && styles.filterButtonActive]}
+              style={[
+                styles.filterButton, 
+                filter === 'month' && styles.filterButtonActive
+              ]}
               onPress={() => setFilter('month')}
               activeOpacity={0.8}
             >
@@ -337,22 +431,28 @@ const HistoryScreen = ({ navigation }) => {
                 styles.filterButtonText,
                 filter === 'month' && styles.filterButtonTextActive
               ]}>
-              Último mes
+                Último mes
               </Text>
             </TouchableOpacity>
           </View>
         </View>
 
         {filteredData.length > 0 ? (
-          <>
+          <Animated.View style={{ opacity: fadeAnim }}>
             {/* Chart */}
             <View style={styles.chartSection}>
-              <Text style={styles.sectionTitle}>📊 Tendencia emocional</Text>
+              <View style={styles.sectionHeader}>
+                <View style={styles.sectionIconWrapper}>
+                  <CustomIcons.TrendingUp size={18} color={COLORS.primary} />
+                </View>
+                <Text style={styles.sectionTitle}>Tendencia emocional</Text>
+              </View>
+              
               <View style={styles.chartContainer}>
                 <LineChart
                   data={chartData}
                   width={width - 64}
-                  height={220}
+                  height={200}
                   yAxisLabel=""
                   yAxisSuffix=""
                   yAxisInterval={1}
@@ -361,13 +461,13 @@ const HistoryScreen = ({ navigation }) => {
                     backgroundGradientFrom: COLORS.white,
                     backgroundGradientTo: COLORS.white,
                     decimalPlaces: 0,
-                    color: (opacity = 1) => `rgba(59, 130, 246, ${opacity})`,
-                    labelColor: (opacity = 1) => `rgba(75, 85, 99, ${opacity})`,
+                    color: (opacity = 1) => `rgba(125, 185, 222, ${opacity})`,
+                    labelColor: (opacity = 1) => `rgba(107, 114, 128, ${opacity})`,
                     style: {
-                      borderRadius: Theme.borderRadius.large
+                      borderRadius: 16
                     },
                     propsForDots: {
-                      r: "4",
+                      r: "5",
                       strokeWidth: "2",
                       stroke: COLORS.primary
                     }
@@ -380,15 +480,15 @@ const HistoryScreen = ({ navigation }) => {
                 
                 <View style={styles.chartLegend}>
                   <View style={styles.legendItem}>
-                    <View style={[styles.legendDot, { backgroundColor: COLORS.error }]} />
+                    <View style={[styles.legendDot, { backgroundColor: '#EF4444' }]} />
                     <Text style={styles.legendText}>Estresado = 1</Text>
                   </View>
                   <View style={styles.legendItem}>
-                    <View style={[styles.legendDot, { backgroundColor: COLORS.warning }]} />
+                    <View style={[styles.legendDot, { backgroundColor: '#F59E0B' }]} />
                     <Text style={styles.legendText}>Neutral = 2</Text>
                   </View>
                   <View style={styles.legendItem}>
-                    <View style={[styles.legendDot, { backgroundColor: COLORS.success }]} />
+                    <View style={[styles.legendDot, { backgroundColor: '#10B981' }]} />
                     <Text style={styles.legendText}>Tranki = 3</Text>
                   </View>
                 </View>
@@ -399,59 +499,84 @@ const HistoryScreen = ({ navigation }) => {
 
             {/* Detailed history */}
             <View style={styles.historySection}>
-              <Text style={styles.sectionTitle}>📋 Registro detallado</Text>
+              <View style={styles.sectionHeader}>
+                <View style={styles.sectionIconWrapper}>
+                  <CustomIcons.List size={18} color={COLORS.primary} />
+                </View>
+                <Text style={styles.sectionTitle}>Registro detallado</Text>
+              </View>
+              
               <View style={styles.historyList}>
                 {filteredData.slice(-10).reverse().map((record, index) => {
                   const emotion = Object.values(EMOTIONS).find(e => e.id === record.emotion);
                   const date = new Date(record.date);
                   
                   return (
-                    <View key={index} style={styles.historyItem}>
+                    <View 
+                      key={index} 
+                      style={[
+                        styles.historyItem,
+                        index === filteredData.slice(-10).reverse().length - 1 && styles.historyItemLast
+                      ]}
+                    >
                       <View style={styles.historyDate}>
-                        <Text style={styles.historyDateText}>
-                          {date.toLocaleDateString('es-ES', { 
-                            weekday: 'short', 
-                            day: 'numeric', 
-                            month: 'short' 
-                          })}
+                        <Text style={styles.historyDateDay}>
+                          {date.getDate()}
+                        </Text>
+                        <Text style={styles.historyDateMonth}>
+                          {date.toLocaleDateString('es-ES', { month: 'short' })}
                         </Text>
                       </View>
                       
-                      <View style={styles.historyEmotion}>
-                        <View style={[styles.historyEmotionIcon, { backgroundColor: getEmotionColor(emotion?.id) + '20' }]}>
-                          <Text style={styles.historyEmotionEmoji}>{getEmotionIcon(emotion?.id)}</Text>
-                        </View>
-                        <View style={styles.historyEmotionInfo}>
-                          <Text style={styles.historyEmotionText}>{emotion?.label}</Text>
-                          <Text style={styles.historyEmotionTime}>
-                            {record.totalRecords ? `${record.totalRecords} registros` : 'Registro único'}
-                          </Text>
+                      <View style={styles.historyContent}>
+                        <View style={styles.historyEmotion}>
+                          <View style={[
+                            styles.historyEmotionIcon, 
+                            { backgroundColor: getEmotionColor(emotion?.id) + '20' }
+                          ]}>
+                            <View style={[
+                              styles.historyEmotionDot,
+                              { backgroundColor: getEmotionColor(emotion?.id) }
+                            ]} />
+                          </View>
+                          <View style={styles.historyEmotionInfo}>
+                            <Text style={styles.historyEmotionText}>
+                              {emotion?.label}
+                            </Text>
+                            <Text style={styles.historyEmotionTime}>
+                              {record.totalRecords 
+                                ? `${record.totalRecords} registros` 
+                                : 'Registro único'}
+                            </Text>
+                          </View>
                         </View>
                       </View>
-                      
-                      <View style={[styles.historyIndicator, { backgroundColor: getEmotionColor(emotion?.id) }]} />
                     </View>
                   );
                 })}
               </View>
             </View>
-          </>
+          </Animated.View>
         ) : (
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyStateEmoji}>📊</Text>
+          <Animated.View style={[styles.emptyState, { opacity: fadeAnim }]}>
+            <View style={styles.emptyStateIcon}>
+              <CustomIcons.BarChart size={48} color={COLORS.textMuted} />
+            </View>
+            
             <Text style={styles.emptyStateTitle}>No hay datos suficientes</Text>
             <Text style={styles.emptyStateText}>
               Registra tu estado emocional durante algunos días para ver tu historial y tendencias.
             </Text>
+            
             <TouchableOpacity
               style={styles.recordButton}
               onPress={() => navigation.navigate('EmotionSelector')}
               activeOpacity={0.8}
             >
               <CustomIcons.Plus size={16} color={COLORS.white} />
-              <Text style={styles.recordButtonText}>Registrar emoción de hoy</Text>
+              <Text style={styles.recordButtonText}>Registrar emoción</Text>
             </TouchableOpacity>
-          </View>
+          </Animated.View>
         )}
       </ScrollView>
     </SafeAreaView>
@@ -461,176 +586,220 @@ const HistoryScreen = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: '#F5F5F5',
   },
+  
+  // Loading
   loadingContainer: {
     flex: 1,
+    backgroundColor: '#F5F5F5',
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: COLORS.background,
+  },
+  loadingContent: {
+    alignItems: 'center',
+  },
+  loadingCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: COLORS.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
   },
   loadingText: {
-    marginTop: Theme.spacing.lg,
-    color: COLORS.textSecondary,
-    fontSize: Theme.typography.body,
+    fontSize: 14,
+    color: '#6B7280',
     fontWeight: '500',
   },
   
-  // Header actualizado
+  // Header
   header: {
     backgroundColor: COLORS.white,
-    paddingHorizontal: Theme.spacing.lg,
-    paddingVertical: Theme.spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.borderLight,
+    paddingTop: Platform.OS === 'ios' ? 10 : 60,
+    paddingBottom: 16,
+    paddingHorizontal: 16,
     flexDirection: 'row',
     alignItems: 'center',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.1,
-        shadowRadius: 3,
-      },
-      android: {
-        elevation: 3,
-      },
-    }),
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+    elevation: 3,
   },
   backButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: COLORS.gray50,
-    marginRight: Theme.spacing.md,
+    backgroundColor: '#F9FAFB',
+    marginRight: 12,
   },
   headerInfo: {
     flex: 1,
   },
   headerTitle: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '700',
-    color: COLORS.text,
+    color: '#1A1A1A',
     marginBottom: 2,
   },
   headerSubtitle: {
     fontSize: 12,
-    color: COLORS.textSecondary,
+    color: '#6B7280',
   },
   headerAction: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: COLORS.gray50,
+    backgroundColor: '#F9FAFB',
   },
   
   // Content
   content: {
     flex: 1,
   },
+  scrollContent: {
+    paddingBottom: 32,
+  },
   
   // Filter
   filterSection: {
     backgroundColor: COLORS.white,
-    paddingHorizontal: Theme.spacing.xl,
-    paddingVertical: Theme.spacing.lg,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.borderLight,
+    borderBottomColor: '#E5E7EB',
   },
   filterContainer: {
     flexDirection: 'row',
-    backgroundColor: COLORS.gray50,
-    borderRadius: Theme.borderRadius.medium,
+    backgroundColor: '#F9FAFB',
+    borderRadius: 12,
     padding: 4,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
   },
   filterButton: {
     flex: 1,
-    paddingVertical: Theme.spacing.md,
-    paddingHorizontal: Theme.spacing.lg,
-    borderRadius: Theme.borderRadius.medium,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 10,
     alignItems: 'center',
   },
   filterButtonActive: {
     backgroundColor: COLORS.white,
-    ...Theme.shadows.small,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
   },
   filterButtonText: {
-    fontSize: Theme.typography.body,
-    color: COLORS.textSecondary,
+    fontSize: 13,
+    color: '#6B7280',
     fontWeight: '500',
   },
   filterButtonTextActive: {
     color: COLORS.primary,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   
   // Sections
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+    gap: 8,
+  },
+  sectionIconWrapper: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#EBF5FB',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   sectionTitle: {
-    fontSize: Theme.typography.h4,
-    fontWeight: '600',
-    color: COLORS.text,
-    marginBottom: Theme.spacing.lg,
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1A1A1A',
   },
   
   // Chart
   chartSection: {
-    padding: Theme.spacing.xl,
+    paddingHorizontal: 16,
+    paddingTop: 24,
+    paddingBottom: 24,
   },
   chartContainer: {
     backgroundColor: COLORS.white,
-    borderRadius: Theme.borderRadius.large,
-    padding: Theme.spacing.lg,
+    borderRadius: 20,
+    padding: 16,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    ...Theme.shadows.small,
+    borderColor: '#E5E7EB',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 3,
   },
   chart: {
-    borderRadius: Theme.borderRadius.medium,
+    borderRadius: 12,
+    marginVertical: 8,
   },
   chartLegend: {
     flexDirection: 'row',
     justifyContent: 'space-around',
-    marginTop: Theme.spacing.lg,
+    marginTop: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#F3F4F6',
   },
   legendItem: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 6,
   },
   legendDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    marginRight: Theme.spacing.sm,
   },
   legendText: {
-    fontSize: Theme.typography.small,
-    color: COLORS.textSecondary,
+    fontSize: 11,
+    color: '#6B7280',
     fontWeight: '500',
   },
   
   // Insights
   insightsSection: {
-    paddingHorizontal: Theme.spacing.xl,
-    paddingBottom: Theme.spacing.xl,
+    paddingHorizontal: 16,
+    paddingBottom: 24,
   },
   emotionStatsGrid: {
     flexDirection: 'row',
-    gap: Theme.spacing.md,
-    marginBottom: Theme.spacing.xl,
+    gap: 12,
+    marginBottom: 24,
   },
   emotionStatCard: {
     flex: 1,
     backgroundColor: COLORS.white,
-    padding: Theme.spacing.lg,
-    borderRadius: Theme.borderRadius.large,
+    padding: 16,
+    borderRadius: 16,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: COLORS.border,
-    ...Theme.shadows.small,
+    borderColor: '#E5E7EB',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
   },
   emotionStatIcon: {
     width: 40,
@@ -638,281 +807,357 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: Theme.spacing.md,
+    marginBottom: 12,
   },
-  emotionStatEmoji: {
-    fontSize: 18,
+  emotionStatDot: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
   },
   emotionStatLabel: {
-    fontSize: Theme.typography.caption,
-    color: COLORS.textSecondary,
+    fontSize: 11,
+    color: '#6B7280',
     fontWeight: '500',
-    marginBottom: Theme.spacing.xs,
+    marginBottom: 4,
   },
   emotionStatPercentage: {
-    fontSize: Theme.typography.h4,
+    fontSize: 20,
     fontWeight: '700',
-    marginBottom: Theme.spacing.xs,
+    marginBottom: 2,
   },
   emotionStatCount: {
-    fontSize: Theme.typography.small,
-    color: COLORS.textMuted,
+    fontSize: 11,
+    color: '#9CA3AF',
   },
   
   // AI Insights
   aiInsightsSection: {
-    marginBottom: Theme.spacing.xl,
+    marginBottom: 24,
+  },
+  aiInsightsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+    gap: 8,
+  },
+  aiIconWrapper: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#EBF5FB',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   aiInsightsTitle: {
-    fontSize: Theme.typography.h5,
-    fontWeight: '600',
-    color: COLORS.text,
-    marginBottom: Theme.spacing.md,
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1A1A1A',
   },
   
   // Insight cards
   insightCard: {
     backgroundColor: COLORS.white,
-    padding: Theme.spacing.xl,
-    borderRadius: Theme.borderRadius.large,
-    marginBottom: Theme.spacing.lg,
+    padding: 16,
+    borderRadius: 16,
+    marginBottom: 12,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    ...Theme.shadows.small,
+    borderColor: '#E5E7EB',
   },
-  insightTitle: {
-    fontSize: Theme.typography.h5,
-    fontWeight: '600',
-    color: COLORS.text,
-    marginBottom: Theme.spacing.md,
+  insightCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+    gap: 8,
   },
-  insightContent: {
+  
+  // Main insight
+  mainInsightCard: {
+    backgroundColor: COLORS.white,
+    padding: 20,
+    borderRadius: 20,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  mainInsightHeader: {
     flexDirection: 'row',
     alignItems: 'center',
   },
-  insightEmoji: {
-    fontSize: 32,
-    marginRight: Theme.spacing.lg,
+  mainInsightIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 16,
   },
-  insightInfo: {
+  mainInsightEmoji: {
+    fontSize: 28,
+  },
+  mainInsightInfo: {
     flex: 1,
   },
-  insightText: {
-    fontSize: Theme.typography.body,
-    color: COLORS.textSecondary,
+  mainInsightTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#6B7280',
+    marginBottom: 6,
+  },
+  mainInsightText: {
+    fontSize: 15,
+    color: '#1A1A1A',
     lineHeight: 20,
   },
-  insightEmotionText: {
-    fontWeight: '600',
+  mainInsightEmotionText: {
+    fontWeight: '700',
   },
   
   // Warning insights
   warningInsight: {
-    backgroundColor: COLORS.warningSoft,
-    borderColor: COLORS.warning,
+    backgroundColor: '#FEF3C7',
     borderLeftWidth: 4,
+    borderLeftColor: '#F59E0B',
   },
   warningInsightTitle: {
-    fontSize: Theme.typography.body,
-    fontWeight: '600',
-    color: COLORS.warning,
-    marginBottom: Theme.spacing.sm,
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#92400E',
   },
   warningInsightText: {
-    fontSize: Theme.typography.body,
-    color: COLORS.warning,
-    fontWeight: '500',
+    fontSize: 13,
+    color: '#92400E',
+    lineHeight: 18,
   },
   
   // Recommendation insights
   recommendationInsight: {
-    backgroundColor: COLORS.blue50,
-    borderColor: COLORS.primary,
+    backgroundColor: '#EBF5FB',
     borderLeftWidth: 4,
+    borderLeftColor: COLORS.primary,
   },
   recommendationInsightTitle: {
-    fontSize: Theme.typography.body,
-    fontWeight: '600',
+    fontSize: 14,
+    fontWeight: '700',
     color: COLORS.primary,
-    marginBottom: Theme.spacing.sm,
   },
   recommendationInsightText: {
-    fontSize: Theme.typography.body,
-    color: COLORS.primary,
-    fontWeight: '500',
+    fontSize: 13,
+    color: '#5A9AB8',
+    lineHeight: 18,
   },
   
   // Trend card
   trendCard: {
-    backgroundColor: COLORS.gray50,
-    padding: Theme.spacing.lg,
-    borderRadius: Theme.borderRadius.medium,
-    marginBottom: Theme.spacing.lg,
+    backgroundColor: '#F9FAFB',
+    padding: 16,
+    borderRadius: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  trendHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+    gap: 8,
   },
   trendTitle: {
-    fontSize: Theme.typography.h5,
-    fontWeight: '600',
-    color: COLORS.text,
-    marginBottom: Theme.spacing.sm,
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#1A1A1A',
   },
   trendDescription: {
-    fontSize: Theme.typography.body,
-    color: COLORS.textSecondary,
+    fontSize: 13,
+    color: '#6B7280',
+    lineHeight: 18,
   },
   
+  // Positive insight
   positiveInsight: {
-    backgroundColor: COLORS.successSoft,
-    borderColor: COLORS.success,
+    backgroundColor: '#D1FAE5',
     borderLeftWidth: 4,
+    borderLeftColor: '#10B981',
   },
   positiveInsightTitle: {
-    fontSize: Theme.typography.h5,
-    fontWeight: '600',
-    color: COLORS.success,
-    marginBottom: Theme.spacing.sm,
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#065F46',
   },
   positiveInsightText: {
-    fontSize: Theme.typography.body,
-    color: COLORS.success,
-    fontWeight: '500',
+    fontSize: 13,
+    color: '#065F46',
+    lineHeight: 18,
   },
   
+  // Concern insight
   concernInsight: {
-    backgroundColor: COLORS.warningSoft,
-    borderColor: COLORS.warning,
+    backgroundColor: '#FEF3C7',
     borderLeftWidth: 4,
+    borderLeftColor: '#F59E0B',
   },
   concernInsightTitle: {
-    fontSize: Theme.typography.h5,
-    fontWeight: '600',
-    color: COLORS.warning,
-    marginBottom: Theme.spacing.sm,
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#92400E',
   },
   concernInsightText: {
-    fontSize: Theme.typography.body,
-    color: COLORS.warning,
-    marginBottom: Theme.spacing.lg,
-    fontWeight: '500',
+    fontSize: 13,
+    color: '#92400E',
+    marginBottom: 12,
+    lineHeight: 18,
   },
   chatButton: {
     backgroundColor: COLORS.primary,
-    paddingHorizontal: Theme.spacing.xl,
-    paddingVertical: Theme.spacing.md,
-    borderRadius: Theme.borderRadius.medium,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 12,
     alignSelf: 'flex-start',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    ...Theme.shadows.small,
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 4,
   },
   chatButtonText: {
     color: COLORS.white,
-    fontSize: Theme.typography.body,
-    fontWeight: '600',
+    fontSize: 13,
+    fontWeight: '700',
   },
   
   // History
   historySection: {
-    paddingHorizontal: Theme.spacing.xl,
-    paddingBottom: Theme.spacing.xxxl,
+    paddingHorizontal: 16,
+    paddingBottom: 24,
   },
   historyList: {
     backgroundColor: COLORS.white,
-    borderRadius: Theme.borderRadius.large,
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    ...Theme.shadows.small,
+    borderColor: '#E5E7EB',
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 3,
   },
   historyItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: Theme.spacing.lg,
+    padding: 16,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.borderLight,
+    borderBottomColor: '#F3F4F6',
+  },
+  historyItemLast: {
+    borderBottomWidth: 0,
   },
   historyDate: {
-    width: 60,
-    marginRight: Theme.spacing.lg,
+    width: 50,
+    alignItems: 'center',
+    marginRight: 16,
   },
-  historyDateText: {
-    fontSize: Theme.typography.caption,
-    color: COLORS.textMuted,
-    fontWeight: '500',
-    textTransform: 'capitalize',
+  historyDateDay: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1A1A1A',
+    lineHeight: 24,
+  },
+  historyDateMonth: {
+    fontSize: 11,
+    color: '#6B7280',
+    textTransform: 'uppercase',
+    fontWeight: '600',
+  },
+  historyContent: {
+    flex: 1,
   },
   historyEmotion: {
-    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
   },
   historyEmotionIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: Theme.spacing.md,
+    marginRight: 12,
   },
-  historyEmotionEmoji: {
-    fontSize: 16,
+  historyEmotionDot: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
   },
   historyEmotionInfo: {
     flex: 1,
   },
   historyEmotionText: {
-    fontSize: Theme.typography.body,
-    color: COLORS.text,
-    fontWeight: '500',
-    marginBottom: Theme.spacing.xs,
+    fontSize: 15,
+    color: '#1A1A1A',
+    fontWeight: '600',
+    marginBottom: 2,
   },
   historyEmotionTime: {
-    fontSize: Theme.typography.small,
-    color: COLORS.textMuted,
-  },
-  historyIndicator: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    fontSize: 12,
+    color: '#9CA3AF',
   },
   
   // Empty state
   emptyState: {
     alignItems: 'center',
-    padding: Theme.spacing.xxxl,
-    margin: Theme.spacing.xl,
+    padding: 32,
+    marginTop: 60,
   },
-  emptyStateEmoji: {
-    fontSize: 64,
-    marginBottom: Theme.spacing.xl,
+  emptyStateIcon: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#F3F4F6',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 24,
   },
   emptyStateTitle: {
-    fontSize: Theme.typography.h3,
-    fontWeight: '600',
-    color: COLORS.text,
-    marginBottom: Theme.spacing.md,
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1A1A1A',
+    marginBottom: 12,
     textAlign: 'center',
   },
   emptyStateText: {
-    fontSize: Theme.typography.body,
-    color: COLORS.textSecondary,
+    fontSize: 14,
+    color: '#6B7280',
     textAlign: 'center',
     lineHeight: 20,
-    marginBottom: Theme.spacing.xxxl,
+    marginBottom: 32,
+    paddingHorizontal: 20,
   },
   recordButton: {
     backgroundColor: COLORS.primary,
-    paddingHorizontal: Theme.spacing.xl,
-    paddingVertical: Theme.spacing.lg,
-    borderRadius: Theme.borderRadius.medium,
+    paddingHorizontal: 24,
+    paddingVertical: 14,
+    borderRadius: 16,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    ...Theme.shadows.small,
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
   },
   recordButtonText: {
     color: COLORS.white,
-    fontSize: Theme.typography.h5,
-    fontWeight: '600',
+    fontSize: 15,
+    fontWeight: '700',
   },
 });
 

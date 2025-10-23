@@ -1,29 +1,27 @@
-// src/screens/ChatScreen.js - Chat 100% IA con Groq, sin fallbacks
+// src/screens/ChatScreen.js - Con espaciado corregido
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
   TextInput,
   TouchableOpacity,
-  ScrollView,
+  FlatList,
   StyleSheet,
-  KeyboardAvoidingView,
   Platform,
   StatusBar,
   SafeAreaView,
-  Dimensions,
   Keyboard,
-  TouchableWithoutFeedback,
   Alert,
 } from 'react-native';
 import auth from '@react-native-firebase/auth';
-import { COLORS, Theme, getEmotionColor, getEmotionIcon } from '../constants/colors';
-import { EMOTIONS } from '../constants/emotions';
-import GroqService from '../services/groqService'; // 🚀 Solo Groq
+import { COLORS } from '../constants/colors';
+import GroqService from '../services/groqService';
 import FirebaseService from '../services/firebase';
 import CustomIcons from '../components/CustomIcons';
 
-const { height: screenHeight, width: screenWidth } = Dimensions.get('window');
+const TAB_BAR_HEIGHT = Platform.OS === 'ios' ? 90 : 70;
+const INPUT_CONTAINER_HEIGHT = 80;
+const SAFE_SPACING = 50;
 
 const ChatScreen = ({ route, navigation }) => {
   const { emotion } = route.params || {};
@@ -31,78 +29,53 @@ const ChatScreen = ({ route, navigation }) => {
   const [inputText, setInputText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [conversationHistory, setConversationHistory] = useState([]);
-  const [connectionStatus, setConnectionStatus] = useState('checking'); // 'checking', 'connected', 'error'
-  const [connectionError, setConnectionError] = useState(null);
+  const [connectionStatus, setConnectionStatus] = useState('checking');
   const [keyboardHeight, setKeyboardHeight] = useState(0);
-  const scrollViewRef = useRef();
-  const textInputRef = useRef();
+  const flatListRef = useRef();
 
   useEffect(() => {
     StatusBar.setBarStyle('dark-content');
     if (Platform.OS === 'android') {
-      StatusBar.setBackgroundColor(COLORS.white);
+      StatusBar.setBackgroundColor('transparent');
+      StatusBar.setTranslucent(true);
     }
     
     checkConnectionAndInitialize();
 
-    const keyboardDidShowListener = Keyboard.addListener(
-      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
-      handleKeyboardShow
+    const showSubscription = Keyboard.addListener(
+      'keyboardDidShow',
+      (e) => setKeyboardHeight(e.endCoordinates.height)
     );
-    
-    const keyboardDidHideListener = Keyboard.addListener(
-      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
-      handleKeyboardHide
+    const hideSubscription = Keyboard.addListener(
+      'keyboardDidHide',
+      () => setKeyboardHeight(0)
     );
 
     return () => {
-      keyboardDidShowListener?.remove();
-      keyboardDidHideListener?.remove();
+      showSubscription.remove();
+      hideSubscription.remove();
     };
   }, [emotion]);
 
-  const handleKeyboardShow = (event) => {
-    const { height } = event.endCoordinates;
-    setKeyboardHeight(height);
-    setTimeout(() => {
-      scrollViewRef.current?.scrollToEnd({ animated: true });
-    }, 100);
-  };
-
-  const handleKeyboardHide = () => {
-    setKeyboardHeight(0);
-  };
-
-  const dismissKeyboard = () => {
-    Keyboard.dismiss();
-  };
-
   const checkConnectionAndInitialize = async () => {
     setConnectionStatus('checking');
-    setConnectionError(null);
     
     try {
-      console.log('🔍 Verificando conexión con Groq...');
       const connectionTest = await GroqService.testConnection();
       
       if (connectionTest.success) {
         setConnectionStatus('connected');
-        console.log('✅ Conectado a Groq ⚡');
         
         if (emotion) {
           setTimeout(() => {
             initializeConversation();
-          }, 500);
+          }, 300);
         }
       } else {
         setConnectionStatus('error');
-        setConnectionError(connectionTest.message);
-        console.error('❌ Error de conexión:', connectionTest.message);
       }
     } catch (error) {
-      console.error('💥 Error crítico verificando conexión:', error);
       setConnectionStatus('error');
-      setConnectionError('Error de conexión. Verifica tu internet y la configuración de Groq.');
     }
   };
 
@@ -118,14 +91,10 @@ const ChatScreen = ({ route, navigation }) => {
       if (user?.uid) {
         try {
           userContext = await getUserContext(user.uid);
-        } catch (contextError) {
-          console.warn('Could not get user context:', contextError);
+        } catch (err) {
           userContext = {};
         }
       }
-      
-      
-      const startTime = Date.now();
       
       const welcomeMessage = await GroqService.getContextualResponse(
         emotion,
@@ -133,26 +102,18 @@ const ChatScreen = ({ route, navigation }) => {
         userContext
       );
       
-      const endTime = Date.now();
-      const responseTimeMs = endTime - startTime;
-      console.log(`Groq respondió en ${responseTimeMs}ms`);
-      
       setTimeout(() => {
         addBotMessage(welcomeMessage);
         setIsTyping(false);
-      }, Math.max(800 - responseTimeMs, 200)); // Mínimo UX delay
+      }, 600);
       
     } catch (error) {
-      console.error('💥 Error inicializando conversación:', error);
       setIsTyping(false);
-      
-      // Mostrar error específico
       Alert.alert(
-        '🤖 Error de IA',
+        'Error de IA',
         `No pude inicializar la conversación: ${error.message}`,
         [
           { text: 'Reintentar', onPress: () => initializeConversation() },
-          { text: 'Configurar', onPress: () => navigation.navigate('Profile') },
           { text: 'Volver', onPress: () => navigation.goBack() }
         ]
       );
@@ -175,14 +136,12 @@ const ChatScreen = ({ route, navigation }) => {
         freeTimeAvailable: calculateFreeTime(todaySchedule)
       };
     } catch (error) {
-      console.error('Error getting user context:', error);
       return {};
     }
   };
 
   const calculateFreeTime = (schedule) => {
     if (!schedule || !schedule.length) return "todo el día";
-    
     const totalEvents = schedule.length;
     if (totalEvents >= 4) return "poco tiempo";
     if (totalEvents >= 2) return "algunas horas";
@@ -191,33 +150,29 @@ const ChatScreen = ({ route, navigation }) => {
 
   const addBotMessage = (message) => {
     const newMessage = {
-      id: Date.now(),
+      id: Date.now().toString(),
       text: message,
       isBot: true,
       timestamp: new Date()
     };
     
-    setMessages(prev => [...prev, newMessage]);
+    setMessages(prev => [newMessage, ...prev]);
     
     setConversationHistory(prev => [
       ...prev,
       { role: 'assistant', content: message }
     ].slice(-12));
-
-    setTimeout(() => {
-      scrollViewRef.current?.scrollToEnd({ animated: true });
-    }, 100);
   };
 
   const addUserMessage = (message) => {
     const newMessage = {
-      id: Date.now(),
+      id: Date.now().toString(),
       text: message,
       isBot: false,
       timestamp: new Date()
     };
     
-    setMessages(prev => [...prev, newMessage]);
+    setMessages(prev => [newMessage, ...prev]);
     
     setConversationHistory(prev => [
       ...prev,
@@ -230,142 +185,78 @@ const ChatScreen = ({ route, navigation }) => {
     
     const userMessage = inputText.trim();
     setInputText('');
+    
     addUserMessage(userMessage);
     setIsTyping(true);
     
     setTimeout(() => {
-      scrollViewRef.current?.scrollToEnd({ animated: true });
-    }, 50);
+      flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+    }, 100);
     
     try {
-      const startTime = Date.now();
-      
       const response = await GroqService.getChatResponse(
         emotion,
         userMessage,
         conversationHistory
       );
       
-      const endTime = Date.now();
-      const responseTimeMs = endTime - startTime;
-      console.log(`⚡ Groq respondió en ${responseTimeMs}ms`);
-      
-      // Mínimo delay para UX (Groq es muy rápido)
-      const minDelay = 600;
-      const actualDelay = Math.max(minDelay - responseTimeMs, 200);
-      
       setTimeout(() => {
         addBotMessage(response);
         setIsTyping(false);
-      }, actualDelay);
+      }, 600);
       
     } catch (error) {
-      console.error('💥 Error obteniendo respuesta:', error);
       setIsTyping(false);
-      
-      // Mostrar error específico al usuario
       Alert.alert(
-        '🤖 Error de IA',
+        'Error de IA',
         `No pude procesar tu mensaje: ${error.message}`,
         [
           { text: 'Reintentar', onPress: () => {
-            // Reenviar el mismo mensaje
             setInputText(userMessage);
-            // Remover el último mensaje del usuario para evitar duplicados
-            setMessages(prev => prev.slice(0, -1));
+            setMessages(prev => prev.slice(1));
             setConversationHistory(prev => prev.slice(0, -1));
-          }},
-          { text: 'Verificar conexión', onPress: () => checkConnectionAndInitialize() }
+          }}
         ]
       );
     }
   };
 
-  const handleQuickAction = (text) => {
-    if (connectionStatus !== 'connected') {
-      Alert.alert('🔌 Sin conexión', 'Primero necesitas estar conectado a Groq para usar el chat.');
-      return;
-    }
+  const renderMessage = ({ item }) => {
+    const isBot = item.isBot;
     
-    setInputText(text);
-    setTimeout(() => {
-      textInputRef.current?.focus();
-    }, 100);
-  };
-
-  const shouldGroupMessage = (currentMsg, prevMsg) => {
-    if (!prevMsg) return false;
-    if (currentMsg.isBot !== prevMsg.isBot) return false;
-    
-    const timeDiff = currentMsg.timestamp.getTime() - prevMsg.timestamp.getTime();
-    return timeDiff < 60000;
-  };
-
-  const renderMessage = (message, index) => {
-    const prevMessage = index > 0 ? messages[index - 1] : null;
-    const isGrouped = shouldGroupMessage(message, prevMessage);
-    const isLastInGroup = index === messages.length - 1 || 
-      !shouldGroupMessage(messages[index + 1], message);
-
     return (
       <View
-        key={message.id}
         style={[
           styles.messageContainer,
-          message.isBot ? styles.botMessageContainer : styles.userMessageContainer,
-          isGrouped && styles.groupedMessage
+          isBot ? styles.botMessageContainer : styles.userMessageContainer
         ]}
       >
-        {message.isBot && !isGrouped && (
+        {isBot && (
           <View style={styles.botAvatar}>
-            <CustomIcons.BotAvatar size={16} color={COLORS.white} />
+            <CustomIcons.MessageCircle size={14} color={COLORS.white} />
           </View>
-        )}
-        
-        {message.isBot && isGrouped && (
-          <View style={styles.avatarPlaceholder} />
         )}
         
         <View style={[
           styles.messageBubble,
-          message.isBot ? styles.botMessage : styles.userMessage,
-          isGrouped && message.isBot && styles.groupedBotMessage,
-          isGrouped && !message.isBot && styles.groupedUserMessage,
-          !isGrouped && message.isBot && styles.firstBotMessage,
-          !isGrouped && !message.isBot && styles.firstUserMessage
+          isBot ? styles.botMessage : styles.userMessage
         ]}>
           <Text style={[
             styles.messageText,
-            message.isBot ? styles.botMessageText : styles.userMessageText
+            isBot ? styles.botMessageText : styles.userMessageText
           ]}>
-            {message.text}
+            {item.text}
           </Text>
           
-          {isLastInGroup && (
-            <View style={styles.messageFooter}>
-              <Text style={[
-                styles.timestamp,
-                message.isBot ? styles.botTimestamp : styles.userTimestamp
-              ]}>
-                {message.timestamp.toLocaleTimeString('es-ES', { 
-                  hour: '2-digit', 
-                  minute: '2-digit' 
-                })}
-              </Text>
-              
-              {message.isBot && (
-                <Text style={styles.responseTimeText}>
-                  IA
-                </Text>
-              )}
-              
-              {!message.isBot && (
-                <View style={styles.messageStatus}>
-                  <CustomIcons.Check size={12} color={COLORS.success} />
-                </View>
-              )}
-            </View>
-          )}
+          <Text style={[
+            styles.timestamp,
+            isBot ? styles.botTimestamp : styles.userTimestamp
+          ]}>
+            {item.timestamp.toLocaleTimeString('es-ES', { 
+              hour: '2-digit', 
+              minute: '2-digit' 
+            })}
+          </Text>
         </View>
       </View>
     );
@@ -374,107 +265,23 @@ const ChatScreen = ({ route, navigation }) => {
   const renderTypingIndicator = () => (
     <View style={[styles.messageContainer, styles.botMessageContainer]}>
       <View style={styles.botAvatar}>
-        <CustomIcons.BotAvatar size={16} color={COLORS.white} />
+        <CustomIcons.MessageCircle size={14} color={COLORS.white} />
       </View>
       
       <View style={[styles.messageBubble, styles.botMessage, styles.typingBubble]}>
-        <View style={styles.typingContainer}>
-          <View style={styles.typingDots}>
-            {[0, 1, 2].map((index) => (
-              <View 
-                key={index}
-                style={[
-                  styles.typingDot,
-                  { animationDelay: `${index * 0.2}s` }
-                ]} 
-              />
-            ))}
-          </View>
-          <Text style={styles.typingText}>Pensando...</Text>
+        <View style={styles.typingDots}>
+          <View style={styles.typingDot} />
+          <View style={styles.typingDot} />
+          <View style={styles.typingDot} />
         </View>
       </View>
     </View>
   );
 
-  const renderConnectionStatus = () => {
-    if (connectionStatus === 'checking') {
-      return (
-        <View style={[styles.statusBanner, styles.checkingBanner]}>
-          <CustomIcons.Loading size={12} color={COLORS.warning} />
-          <Text style={styles.statusText}>Conectando a Groq...</Text>
-        </View>
-      );
-    }
-    
-    if (connectionStatus === 'connected') {
-      return (
-        <View style={[styles.statusBanner, styles.connectedBanner]}>
-          <Text style={styles.statusText}>🤖 Asistente conectado</Text>
-        </View>
-      );
-    }
-    
-    if (connectionStatus === 'error') {
-      return (
-        <View style={[styles.statusBanner, styles.errorBanner]}>
-          <CustomIcons.AlertCircle size={12} color={COLORS.error} />
-          <Text style={styles.statusTextError}>Error de conexión</Text>
-          <TouchableOpacity
-            style={styles.retryButton}
-            onPress={checkConnectionAndInitialize}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.retryButtonText}>Reintentar</Text>
-          </TouchableOpacity>
-        </View>
-      );
-    }
-    
-    return null;
+  const ListHeaderComponent = () => {
+    if (!isTyping) return null;
+    return renderTypingIndicator();
   };
-
-  const renderErrorState = () => (
-    <View style={styles.errorContainer}>
-      <CustomIcons.AlertCircle size={48} color={COLORS.error} />
-      <Text style={styles.errorTitle}>🤖 IA no disponible</Text>
-      <Text style={styles.errorMessage}>{connectionError}</Text>
-      
-      <View style={styles.errorActions}>
-        <TouchableOpacity
-          style={styles.primaryErrorButton}
-          onPress={checkConnectionAndInitialize}
-          activeOpacity={0.8}
-        >
-          <CustomIcons.Wifi size={16} color={COLORS.white} />
-          <Text style={styles.primaryErrorButtonText}>Reconectar</Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity
-          style={styles.secondaryErrorButton}
-          onPress={() => navigation.goBack()}
-          activeOpacity={0.8}
-        >
-          <Text style={styles.secondaryErrorButtonText}>Volver</Text>
-        </TouchableOpacity>
-      </View>
-      
-      <View style={styles.errorInfo}>
-        <Text style={styles.errorInfoTitle}>💡 ¿Qué puedes hacer?</Text>
-        <Text style={styles.errorInfoText}>
-          • Verifica tu conexión a internet{'\n'}
-          • Asegúrate de tener una API key válida de Groq{'\n'}
-          • Contacta soporte si el problema persiste
-        </Text>
-      </View>
-    </View>
-  );
-
-  const quickActions = [
-    'Técnicas de relajación',
-    'Ejercicios de respiración', 
-    'Actividades para hoy',
-    'Consejos de bienestar'
-  ];
 
   if (connectionStatus === 'error') {
     return (
@@ -485,7 +292,7 @@ const ChatScreen = ({ route, navigation }) => {
             onPress={() => navigation.goBack()}
             activeOpacity={0.7}
           >
-            <CustomIcons.ArrowLeft size={20} color={COLORS.text} />
+            <CustomIcons.ArrowLeft size={22} color={COLORS.text} />
           </TouchableOpacity>
           
           <View style={styles.headerInfo}>
@@ -494,287 +301,206 @@ const ChatScreen = ({ route, navigation }) => {
           </View>
         </View>
         
-        {renderErrorState()}
+        <View style={styles.errorContainer}>
+          <CustomIcons.AlertCircle size={48} color={COLORS.error} />
+          <Text style={styles.errorTitle}>IA no disponible</Text>
+          <Text style={styles.errorMessage}>
+            Verifica tu conexión a internet y la configuración de Groq
+          </Text>
+          
+          <TouchableOpacity
+            style={styles.retryButton}
+            onPress={checkConnectionAndInitialize}
+            activeOpacity={0.8}
+          >
+            <CustomIcons.Wifi size={18} color={COLORS.white} />
+            <Text style={styles.retryButtonText}>Reconectar</Text>
+          </TouchableOpacity>
+        </View>
       </SafeAreaView>
     );
   }
 
+  // Calcular posición del input y padding de mensajes
+  const inputBottom = keyboardHeight > 0 ? keyboardHeight : TAB_BAR_HEIGHT;
+  const messagesPadding = inputBottom + INPUT_CONTAINER_HEIGHT + SAFE_SPACING;
+
   return (
-    <SafeAreaView style={styles.container}>
-      <TouchableWithoutFeedback onPress={dismissKeyboard}>
-        <View style={styles.container}>
-          {/* Header */}
-          <View style={styles.header}>
-            <TouchableOpacity
-              style={styles.backButton}
-              onPress={() => navigation.goBack()}
-              activeOpacity={0.7}
-            >
-              <CustomIcons.ArrowLeft size={20} color={COLORS.text} />
-            </TouchableOpacity>
-            
-            <View style={styles.headerInfo}>
-              <Text style={styles.headerTitle}>Asistente Tranki</Text>
-              {emotion && (
-                <View style={styles.emotionChip}>
-                  <Text style={styles.emotionChipIcon}>{getEmotionIcon(emotion.id)}</Text>
-                  <Text style={styles.emotionChipText}>{emotion.label}</Text>
-                </View>
-              )}
-            </View>
-
-            <TouchableOpacity 
-              style={styles.headerAction}
-              onPress={() => Alert.alert('🤖 Asistente IA', GroqService.getModelInfo().features.join('\n'))}
-            >
-              <CustomIcons.BotAvatar size={18} color={COLORS.textMuted} />
-            </TouchableOpacity>
-          </View>
-
-          {renderConnectionStatus()}
-
-          <KeyboardAvoidingView 
-            style={styles.chatContainer}
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-            keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+    <SafeAreaView style={styles.safeArea}>
+      <StatusBar
+        barStyle="dark-content"
+        backgroundColor="transparent"
+        translucent
+      />
+      
+      <View style={styles.container}>
+        {/* Header */}
+        <View style={styles.header}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => navigation.goBack()}
+            activeOpacity={0.7}
           >
-            {/* Messages con scroll arreglado */}
-            <ScrollView
-              ref={scrollViewRef}
-              style={styles.messagesContainer}
-              contentContainerStyle={styles.messagesContent}
-              showsVerticalScrollIndicator={true}
-              keyboardShouldPersistTaps="handled"
-              scrollEnabled={true}
-              bounces={true}
-              onContentSizeChange={() => {
-                // Solo auto-scroll si el usuario está cerca del final
-                setTimeout(() => {
-                  scrollViewRef.current?.scrollToEnd({ animated: true });
-                }, 100);
-              }}
-            >
-              {messages.map((message, index) => renderMessage(message, index))}
-              {isTyping && renderTypingIndicator()}
-            </ScrollView>
-
-            {/* Quick Actions */}
-            {!isTyping && messages.length > 0 && keyboardHeight === 0 && connectionStatus === 'connected' && (
-              <View style={styles.quickActions}>
-                <ScrollView 
-                  horizontal 
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.quickActionsContent}
-                >
-                  {quickActions.map((action, index) => (
-                    <TouchableOpacity
-                      key={index}
-                      style={styles.quickActionButton}
-                      onPress={() => handleQuickAction(action)}
-                      activeOpacity={0.8}
-                    >
-                      <Text style={styles.quickActionText}>{action}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
+            <CustomIcons.ArrowLeft size={22} color={COLORS.text} />
+          </TouchableOpacity>
+          
+          <View style={styles.headerInfo}>
+            <Text style={styles.headerTitle}>Asistente Tranki</Text>
+            {emotion && (
+              <View style={styles.emotionChip}>
+                <Text style={styles.emotionChipText}>{emotion.label}</Text>
               </View>
             )}
+          </View>
 
-            {/* Input area con mejor posicionamiento */}
-            <View style={[styles.inputContainer, Platform.OS === 'android' && { paddingBottom: Math.max(keyboardHeight * 0.02, Theme.spacing.lg) }]}>
-              <View style={styles.inputWrapper}>
-                <TextInput
-                  ref={textInputRef}
-                  style={styles.textInput}
-                  value={inputText}
-                  onChangeText={setInputText}
-                  placeholder={connectionStatus === 'connected' ? "Escribe tu mensaje..." : "Esperando conexión..."}
-                  placeholderTextColor={COLORS.textMuted}
-                  multiline
-                  maxLength={500}
-                  textAlignVertical="top"
-                  editable={connectionStatus === 'connected'}
-                  returnKeyType="send"
-                  blurOnSubmit={false}
-                  onSubmitEditing={handleSendMessage}
-                  onFocus={() => {
-                    setTimeout(() => {
-                      scrollViewRef.current?.scrollToEnd({ animated: true });
-                    }, 300);
-                  }}
-                />
-                
-                <TouchableOpacity
-                  style={[
-                    styles.sendButton,
-                    (!inputText.trim() || isTyping || connectionStatus !== 'connected') && styles.sendButtonDisabled
-                  ]}
-                  onPress={handleSendMessage}
-                  disabled={!inputText.trim() || isTyping || connectionStatus !== 'connected'}
-                  activeOpacity={0.8}
-                >
-                  {isTyping ? (
-                    <CustomIcons.Loading size={16} color={COLORS.white} />
-                  ) : (
-                    <CustomIcons.Send size={16} color={COLORS.white} />
-                  )}
-                </TouchableOpacity>
-              </View>
-            </View>
-          </KeyboardAvoidingView>
+          <View style={styles.botIndicator}>
+            <View style={styles.botIndicatorDot} />
+          </View>
         </View>
-      </TouchableWithoutFeedback>
+
+        {/* Messages */}
+        <FlatList
+          ref={flatListRef}
+          data={messages}
+          renderItem={renderMessage}
+          keyExtractor={item => item.id}
+          inverted
+          contentContainerStyle={[
+            styles.messagesContent,
+            { paddingBottom: messagesPadding }
+          ]}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
+          ListHeaderComponent={ListHeaderComponent}
+        />
+
+        {/* Input - Posición absoluta */}
+        <View style={[styles.inputContainer, { bottom: inputBottom }]}>
+          <View style={styles.inputWrapper}>
+            <TextInput
+              style={styles.textInput}
+              value={inputText}
+              onChangeText={setInputText}
+              placeholder={
+                connectionStatus === 'connected' 
+                  ? "Escribe un mensaje..." 
+                  : "Conectando..."
+              }
+              placeholderTextColor={COLORS.textMuted}
+              multiline
+              maxLength={500}
+              editable={connectionStatus === 'connected'}
+              returnKeyType="send"
+              blurOnSubmit={false}
+              onSubmitEditing={handleSendMessage}
+            />
+            
+            <TouchableOpacity
+              style={[
+                styles.sendButton,
+                (!inputText.trim() || isTyping || connectionStatus !== 'connected') 
+                  && styles.sendButtonDisabled
+              ]}
+              onPress={handleSendMessage}
+              disabled={!inputText.trim() || isTyping || connectionStatus !== 'connected'}
+              activeOpacity={0.8}
+            >
+              <CustomIcons.Send size={18} color={COLORS.white} />
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#F5F5F5',
+  },
   container: {
     flex: 1,
-    backgroundColor: COLORS.background,
   },
   
   // Header
   header: {
     backgroundColor: COLORS.white,
-    paddingTop: Theme.spacing.sm,
-    paddingBottom: Theme.spacing.md,
-    paddingHorizontal: Theme.spacing.lg,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.borderLight,
+    paddingTop: Platform.OS === 'ios' ? 10 : 60,
+    paddingBottom: 16,
+    paddingHorizontal: 16,
     flexDirection: 'row',
     alignItems: 'center',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.08,
-        shadowRadius: 2,
-      },
-      android: {
-        elevation: 2,
-      },
-    }),
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+    elevation: 3,
   },
   backButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: COLORS.gray50,
-    marginRight: Theme.spacing.md,
+    backgroundColor: '#F9FAFB',
+    marginRight: 12,
   },
   headerInfo: {
     flex: 1,
   },
   headerTitle: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '700',
-    color: COLORS.text,
+    color: '#1A1A1A',
     marginBottom: 2,
-  },
-  headerSubtitle: {
-    fontSize: 12,
-    color: COLORS.textSecondary,
-  },
-  headerAction: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: COLORS.gray50,
-  },
-  headerActionText: {
-    fontSize: 18,
   },
   emotionChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.blue50,
+    backgroundColor: '#EBF5FB',
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 12,
     alignSelf: 'flex-start',
   },
-  emotionChipIcon: {
-    fontSize: 10,
-    marginRight: 4,
-  },
   emotionChipText: {
     fontSize: 11,
-    color: COLORS.blue600,
+    color: COLORS.primary,
     fontWeight: '600',
   },
-  
-  // Status banners
-  statusBanner: {
-    paddingVertical: 8,
-    paddingHorizontal: Theme.spacing.lg,
-    flexDirection: 'row',
-    alignItems: 'center',
+  botIndicator: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: COLORS.primary,
     justifyContent: 'center',
-    gap: 8,
+    alignItems: 'center',
   },
-  checkingBanner: {
-    backgroundColor: COLORS.warningSoft,
-  },
-  connectedBanner: {
-    backgroundColor: COLORS.successSoft,
-  },
-  errorBanner: {
-    backgroundColor: COLORS.errorSoft,
-    justifyContent: 'space-between',
-  },
-  statusText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: COLORS.success,
-  },
-  statusTextError: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: COLORS.error,
-  },
-  responseTimeStatus: {
-    fontSize: 10,
-    color: COLORS.success,
-    opacity: 0.8,
-  },
-  retryButton: {
-    backgroundColor: COLORS.error,
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  retryButtonText: {
-    color: COLORS.white,
-    fontSize: 10,
-    fontWeight: '600',
-  },
-  
-  // Chat container
-  chatContainer: {
-    flex: 1,
+  botIndicatorDot: {
+    position: 'absolute',
+    bottom: 2,
+    right: 2,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#10B981',
+    borderWidth: 2,
+    borderColor: COLORS.white,
   },
   
   // Messages
-  messagesContainer: {
-    flex: 1,
-  },
   messagesContent: {
-    padding: Theme.spacing.lg,
-    flexGrow: 1,
-    paddingBottom: Theme.spacing.xxxl, // Más espacio para scroll
+    paddingHorizontal: 16,
+    paddingTop: 16,
   },
   messageContainer: {
     flexDirection: 'row',
-    marginBottom: Theme.spacing.md,
+    marginBottom: 12,
     alignItems: 'flex-end',
-  },
-  groupedMessage: {
-    marginBottom: Theme.spacing.xs,
   },
   botMessageContainer: {
     justifyContent: 'flex-start',
@@ -782,302 +508,162 @@ const styles = StyleSheet.create({
   userMessageContainer: {
     justifyContent: 'flex-end',
   },
-  
-  // Avatar
   botAvatar: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     backgroundColor: COLORS.primary,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: Theme.spacing.sm,
+    marginRight: 8,
   },
-  botAvatarText: {
-    fontSize: 14,
-    color: COLORS.white,
-  },
-  avatarPlaceholder: {
-    width: 28,
-    marginRight: Theme.spacing.sm,
-  },
-  
-  // Bubbles
   messageBubble: {
-    maxWidth: screenWidth * 0.75,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 18,
+    maxWidth: '75%',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 20,
   },
-  
   botMessage: {
     backgroundColor: COLORS.white,
     borderBottomLeftRadius: 4,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.08,
-        shadowRadius: 2,
-      },
-      android: {
-        elevation: 1,
-      },
-    }),
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
   },
   userMessage: {
     backgroundColor: COLORS.primary,
     borderBottomRightRadius: 4,
   },
-  firstBotMessage: {
-    borderTopLeftRadius: 18,
-  },
-  firstUserMessage: {
-    borderTopRightRadius: 18,
-  },
-  groupedBotMessage: {
-    borderTopLeftRadius: 18,
-    borderBottomLeftRadius: 18,
-  },
-  groupedUserMessage: {
-    borderTopRightRadius: 18,
-    borderBottomRightRadius: 18,
-  },
-  
   messageText: {
     fontSize: 15,
     lineHeight: 20,
+    marginBottom: 4,
   },
   botMessageText: {
-    color: COLORS.text,
+    color: '#1A1A1A',
   },
   userMessageText: {
     color: COLORS.white,
   },
-  
-  // Message footer
-  messageFooter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    marginTop: 4,
-    gap: 4,
-  },
   timestamp: {
     fontSize: 11,
-    fontWeight: '500',
+    marginTop: 2,
   },
   botTimestamp: {
-    color: COLORS.textMuted,
+    color: '#9CA3AF',
   },
   userTimestamp: {
     color: COLORS.white,
-    opacity: 0.8,
+    opacity: 0.7,
   },
-  responseTimeText: {
-    fontSize: 9,
-    color: COLORS.textMuted,
-    fontWeight: '500',
-  },
-  messageStatus: {
-    opacity: 0.8,
-  },
-  
-  // Typing indicator
   typingBubble: {
-    paddingVertical: 12,
-  },
-  typingContainer: {
-    alignItems: 'center',
+    paddingVertical: 16,
   },
   typingDots: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    marginBottom: 4,
   },
   typingDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
     backgroundColor: COLORS.primary,
     opacity: 0.4,
   },
-  typingText: {
-    fontSize: 11,
-    color: COLORS.textMuted,
-    fontStyle: 'italic',
-  },
   
-  // Quick actions
-  quickActions: {
-    backgroundColor: COLORS.white,
-    paddingVertical: Theme.spacing.sm,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.borderLight,
-  },
-  quickActionsContent: {
-    paddingHorizontal: Theme.spacing.lg,
-    gap: Theme.spacing.sm,
-  },
-  quickActionButton: {
-    backgroundColor: COLORS.blue50,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: COLORS.blue200,
-  },
-  quickActionText: {
-    fontSize: 13,
-    color: COLORS.blue600,
-    fontWeight: '600',
-  },
-  
-  // Input con mejor manejo de teclado
+  // Input con posición absoluta
   inputContainer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
     backgroundColor: COLORS.white,
-    paddingHorizontal: Theme.spacing.lg,
-    paddingTop: Theme.spacing.sm,
-    paddingBottom: Platform.OS === 'ios' ? Theme.spacing.lg : Theme.spacing.lg,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: Platform.OS === 'ios' ? 20 : 16,
     borderTopWidth: 1,
-    borderTopColor: COLORS.borderLight,
+    borderTopColor: '#E5E7EB',
   },
   inputWrapper: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    backgroundColor: COLORS.gray50,
+    backgroundColor: '#F9FAFB',
     borderRadius: 24,
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    minHeight: 48,
-    maxHeight: 120,
+    borderColor: '#E5E7EB',
   },
   textInput: {
     flex: 1,
     fontSize: 15,
-    color: COLORS.text,
+    color: '#1A1A1A',
     marginRight: 12,
-    paddingVertical: 8,
+    paddingTop: 8,
+    paddingBottom: 8,
+    maxHeight: 100,
     lineHeight: 20,
-    maxHeight: 80,
   },
   sendButton: {
     backgroundColor: COLORS.primary,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     justifyContent: 'center',
     alignItems: 'center',
-    ...Platform.select({
-      ios: {
-        shadowColor: COLORS.primary,
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.25,
-        shadowRadius: 3,
-      },
-      android: {
-        elevation: 3,
-      },
-    }),
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 4,
   },
   sendButtonDisabled: {
-    backgroundColor: COLORS.gray300,
-    ...Platform.select({
-      ios: {
-        shadowOpacity: 0,
-      },
-      android: {
-        elevation: 0,
-      },
-    }),
+    backgroundColor: '#D1D5DB',
+    shadowOpacity: 0,
+    elevation: 0,
   },
   
-  // Error state
+  // Error
   errorContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: Theme.spacing.xxxl,
+    padding: 32,
   },
   errorTitle: {
-    fontSize: Theme.typography.h3,
+    fontSize: 20,
     fontWeight: '700',
-    color: COLORS.text,
-    marginTop: Theme.spacing.lg,
-    marginBottom: Theme.spacing.md,
-    textAlign: 'center',
+    color: '#1A1A1A',
+    marginTop: 16,
+    marginBottom: 8,
   },
   errorMessage: {
-    fontSize: Theme.typography.body,
-    color: COLORS.textSecondary,
+    fontSize: 14,
+    color: '#6B7280',
     textAlign: 'center',
     lineHeight: 20,
-    marginBottom: Theme.spacing.xxxl,
+    marginBottom: 32,
   },
-  errorActions: {
-    flexDirection: 'row',
-    gap: Theme.spacing.md,
-    marginBottom: Theme.spacing.xxxl,
-  },
-  primaryErrorButton: {
+  retryButton: {
     backgroundColor: COLORS.primary,
-    paddingHorizontal: Theme.spacing.xl,
-    paddingVertical: Theme.spacing.lg,
-    borderRadius: Theme.borderRadius.medium,
+    paddingHorizontal: 24,
+    paddingVertical: 14,
+    borderRadius: 16,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    ...Platform.select({
-      ios: {
-        shadowColor: COLORS.primary,
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.25,
-        shadowRadius: 3,
-      },
-      android: {
-        elevation: 3,
-      },
-    }),
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
   },
-  primaryErrorButtonText: {
+  retryButtonText: {
     color: COLORS.white,
-    fontSize: Theme.typography.h5,
-    fontWeight: '600',
-  },
-  secondaryErrorButton: {
-    backgroundColor: COLORS.white,
-    paddingHorizontal: Theme.spacing.xl,
-    paddingVertical: Theme.spacing.lg,
-    borderRadius: Theme.borderRadius.medium,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  secondaryErrorButtonText: {
-    color: COLORS.text,
-    fontSize: Theme.typography.h5,
-    fontWeight: '600',
-  },
-  errorInfo: {
-    backgroundColor: COLORS.blue50,
-    padding: Theme.spacing.lg,
-    borderRadius: Theme.borderRadius.large,
-    borderWidth: 1,
-    borderColor: COLORS.blue200,
-    alignSelf: 'stretch',
-  },
-  errorInfoTitle: {
-    fontSize: Theme.typography.h5,
-    fontWeight: '600',
-    color: COLORS.blue600,
-    marginBottom: Theme.spacing.sm,
-  },
-  errorInfoText: {
-    fontSize: Theme.typography.body,
-    color: COLORS.blue600,
-    lineHeight: 18,
+    fontSize: 16,
+    fontWeight: '700',
   },
 });
 
