@@ -1,5 +1,4 @@
-// src/screens/ChatScreen.js - Con espaciado corregido
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -10,8 +9,10 @@ import {
   Platform,
   StatusBar,
   SafeAreaView,
-  Keyboard,
   Alert,
+  Animated,
+  Dimensions,
+  Keyboard,
 } from 'react-native';
 import auth from '@react-native-firebase/auth';
 import { COLORS } from '../constants/colors';
@@ -19,9 +20,9 @@ import GroqService from '../services/groqService';
 import FirebaseService from '../services/firebase';
 import CustomIcons from '../components/CustomIcons';
 
+const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 const TAB_BAR_HEIGHT = Platform.OS === 'ios' ? 90 : 70;
-const INPUT_CONTAINER_HEIGHT = 80;
-const SAFE_SPACING = 50;
+const INPUT_AREA_DEFAULT_HEIGHT = 80;
 
 const ChatScreen = ({ route, navigation }) => {
   const { emotion } = route.params || {};
@@ -31,7 +32,11 @@ const ChatScreen = ({ route, navigation }) => {
   const [conversationHistory, setConversationHistory] = useState([]);
   const [connectionStatus, setConnectionStatus] = useState('checking');
   const [keyboardHeight, setKeyboardHeight] = useState(0);
-  const flatListRef = useRef();
+  const [inputContainerHeight, setInputContainerHeight] = useState(INPUT_AREA_DEFAULT_HEIGHT);
+
+  const flatListRef = useRef(null);
+  const inputRef = useRef(null);
+  const inputBottomAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     StatusBar.setBarStyle('dark-content');
@@ -39,74 +44,75 @@ const ChatScreen = ({ route, navigation }) => {
       StatusBar.setBackgroundColor('transparent');
       StatusBar.setTranslucent(true);
     }
-    
+
+    const keyboardWillShowListener = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      (e) => {
+        const kHeight = e.endCoordinates.height;
+        setKeyboardHeight(kHeight);
+        Animated.timing(inputBottomAnim, {
+          toValue: kHeight - TAB_BAR_HEIGHT,
+          duration: Platform.OS === 'ios' ? e.duration : 250,
+          useNativeDriver: false,
+        }).start();
+      }
+    );
+
+    const keyboardWillHideListener = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      (e) => {
+        setKeyboardHeight(0);
+        Animated.timing(inputBottomAnim, {
+          toValue: 0,
+          duration: Platform.OS === 'ios' ? e.duration : 250,
+          useNativeDriver: false,
+        }).start();
+      }
+    );
+
     checkConnectionAndInitialize();
 
-    const showSubscription = Keyboard.addListener(
-      'keyboardDidShow',
-      (e) => setKeyboardHeight(e.endCoordinates.height)
-    );
-    const hideSubscription = Keyboard.addListener(
-      'keyboardDidHide',
-      () => setKeyboardHeight(0)
-    );
-
     return () => {
-      showSubscription.remove();
-      hideSubscription.remove();
+      keyboardWillShowListener.remove();
+      keyboardWillHideListener.remove();
     };
   }, [emotion]);
 
   const checkConnectionAndInitialize = async () => {
     setConnectionStatus('checking');
-    
     try {
       const connectionTest = await GroqService.testConnection();
-      
       if (connectionTest.success) {
         setConnectionStatus('connected');
-        
-        if (emotion) {
-          setTimeout(() => {
-            initializeConversation();
-          }, 300);
-        }
-      } else {
-        setConnectionStatus('error');
-      }
-    } catch (error) {
+        if (emotion) setTimeout(() => initializeConversation(), 300);
+      } else setConnectionStatus('error');
+    } catch {
       setConnectionStatus('error');
     }
   };
 
   const initializeConversation = async () => {
     if (connectionStatus !== 'connected') return;
-    
     setIsTyping(true);
-    
     try {
       const user = auth().currentUser;
       let userContext = {};
-      
       if (user?.uid) {
         try {
           userContext = await getUserContext(user.uid);
-        } catch (err) {
+        } catch {
           userContext = {};
         }
       }
-      
       const welcomeMessage = await GroqService.getContextualResponse(
         emotion,
         `Hola, hoy me siento ${emotion.label.toLowerCase()}`,
         userContext
       );
-      
       setTimeout(() => {
         addBotMessage(welcomeMessage);
         setIsTyping(false);
       }, 600);
-      
     } catch (error) {
       setIsTyping(false);
       Alert.alert(
@@ -126,16 +132,14 @@ const ChatScreen = ({ route, navigation }) => {
         FirebaseService.getSchedule(userId).catch(() => null),
         FirebaseService.getEmotionHistory(userId, 7).catch(() => [])
       ]);
-
       const today = new Date().toLocaleDateString('es-ES', { weekday: 'long' });
       const todaySchedule = schedule?.[today] || [];
-      
       return {
         hasScheduleToday: todaySchedule.length > 0,
         recentEmotions: recentEmotions || [],
         freeTimeAvailable: calculateFreeTime(todaySchedule)
       };
-    } catch (error) {
+    } catch {
       return {};
     }
   };
@@ -149,125 +153,83 @@ const ChatScreen = ({ route, navigation }) => {
   };
 
   const addBotMessage = (message) => {
-    const newMessage = {
-      id: Date.now().toString(),
-      text: message,
-      isBot: true,
-      timestamp: new Date()
-    };
-    
-    setMessages(prev => [newMessage, ...prev]);
-    
-    setConversationHistory(prev => [
-      ...prev,
-      { role: 'assistant', content: message }
-    ].slice(-12));
+    const newMessage = { id: Date.now().toString(), text: message, isBot: true, timestamp: new Date() };
+    setMessages(prev => [...prev, newMessage]);
+    setConversationHistory(prev => [...prev, { role: 'assistant', content: message }].slice(-12));
   };
 
   const addUserMessage = (message) => {
-    const newMessage = {
-      id: Date.now().toString(),
-      text: message,
-      isBot: false,
-      timestamp: new Date()
-    };
-    
-    setMessages(prev => [newMessage, ...prev]);
-    
-    setConversationHistory(prev => [
-      ...prev,
-      { role: 'user', content: message }
-    ].slice(-12));
+    const newMessage = { id: Date.now().toString(), text: message, isBot: false, timestamp: new Date() };
+    setMessages(prev => [...prev, newMessage]);
+    setConversationHistory(prev => [...prev, { role: 'user', content: message }].slice(-12));
   };
 
   const handleSendMessage = async () => {
     if (!inputText.trim() || isTyping || connectionStatus !== 'connected') return;
-    
     const userMessage = inputText.trim();
     setInputText('');
-    
     addUserMessage(userMessage);
     setIsTyping(true);
-    
-    setTimeout(() => {
-      flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
-    }, 100);
-    
     try {
-      const response = await GroqService.getChatResponse(
-        emotion,
-        userMessage,
-        conversationHistory
-      );
-      
+      const response = await GroqService.getChatResponse(emotion, userMessage, conversationHistory);
       setTimeout(() => {
         addBotMessage(response);
         setIsTyping(false);
       }, 600);
-      
     } catch (error) {
       setIsTyping(false);
-      Alert.alert(
-        'Error de IA',
-        `No pude procesar tu mensaje: ${error.message}`,
-        [
-          { text: 'Reintentar', onPress: () => {
-            setInputText(userMessage);
-            setMessages(prev => prev.slice(1));
-            setConversationHistory(prev => prev.slice(0, -1));
-          }}
-        ]
-      );
+      Alert.alert('Error de IA', `No pude procesar tu mensaje: ${error.message}`, [
+        { text: 'Reintentar', onPress: () => setInputText(userMessage) }
+      ]);
     }
   };
 
-  const renderMessage = ({ item }) => {
+  useEffect(() => {
+    if (messages.length > 0) {
+      setTimeout(() => {
+        flatListRef.current?.scrollToEnd({ animated: true });
+      }, 100);
+    }
+  }, [messages]);
+
+  const AnimatedMessage = ({ item }) => {
+    const fadeAnim = useRef(new Animated.Value(0)).current;
+    const translateY = useRef(new Animated.Value(20)).current;
+    useEffect(() => {
+      Animated.parallel([
+        Animated.timing(fadeAnim, { toValue: 1, duration: 300, useNativeDriver: true }),
+        Animated.timing(translateY, { toValue: 0, duration: 300, useNativeDriver: true }),
+      ]).start();
+    }, []);
     const isBot = item.isBot;
-    
     return (
-      <View
-        style={[
-          styles.messageContainer,
-          isBot ? styles.botMessageContainer : styles.userMessageContainer
-        ]}
-      >
-        {isBot && (
-          <View style={styles.botAvatar}>
-            <CustomIcons.MessageCircle size={14} color={COLORS.white} />
+      <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY }] }}>
+        <View style={[styles.messageContainer, isBot ? styles.botMessageContainer : styles.userMessageContainer]}>
+          {isBot && (
+            <View style={styles.botAvatar}>
+              <CustomIcons.MessageCircle size={14} color={COLORS.white} />
+            </View>
+          )}
+          <View style={[styles.messageBubble, isBot ? styles.botMessage : styles.userMessage]}>
+            <Text style={[styles.messageText, isBot ? styles.botMessageText : styles.userMessageText]}>
+              {item.text}
+            </Text>
+            <Text style={[styles.timestamp, isBot ? styles.botTimestamp : styles.userTimestamp]}>
+              {item.timestamp.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
+            </Text>
           </View>
-        )}
-        
-        <View style={[
-          styles.messageBubble,
-          isBot ? styles.botMessage : styles.userMessage
-        ]}>
-          <Text style={[
-            styles.messageText,
-            isBot ? styles.botMessageText : styles.userMessageText
-          ]}>
-            {item.text}
-          </Text>
-          
-          <Text style={[
-            styles.timestamp,
-            isBot ? styles.botTimestamp : styles.userTimestamp
-          ]}>
-            {item.timestamp.toLocaleTimeString('es-ES', { 
-              hour: '2-digit', 
-              minute: '2-digit' 
-            })}
-          </Text>
         </View>
-      </View>
+      </Animated.View>
     );
   };
 
-  const renderTypingIndicator = () => (
+  const renderMessage = useCallback(({ item }) => <AnimatedMessage item={item} />, []);
+
+  const TypingIndicator = () => (
     <View style={[styles.messageContainer, styles.botMessageContainer]}>
       <View style={styles.botAvatar}>
         <CustomIcons.MessageCircle size={14} color={COLORS.white} />
       </View>
-      
       <View style={[styles.messageBubble, styles.botMessage, styles.typingBubble]}>
         <View style={styles.typingDots}>
           <View style={styles.typingDot} />
@@ -278,115 +240,71 @@ const ChatScreen = ({ route, navigation }) => {
     </View>
   );
 
-  const ListHeaderComponent = () => {
-    if (!isTyping) return null;
-    return renderTypingIndicator();
-  };
-
   if (connectionStatus === 'error') {
     return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.header}>
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={() => navigation.goBack()}
-            activeOpacity={0.7}
-          >
-            <CustomIcons.ArrowLeft size={22} color={COLORS.text} />
-          </TouchableOpacity>
-          
-          <View style={styles.headerInfo}>
-            <Text style={styles.headerTitle}>Asistente Tranki</Text>
-            <Text style={styles.headerSubtitle}>Error de conexión</Text>
-          </View>
-        </View>
-        
+      <SafeAreaView style={styles.safeArea}>
         <View style={styles.errorContainer}>
           <CustomIcons.AlertCircle size={48} color={COLORS.error} />
           <Text style={styles.errorTitle}>IA no disponible</Text>
-          <Text style={styles.errorMessage}>
-            Verifica tu conexión a internet y la configuración de Groq
-          </Text>
-          
-          <TouchableOpacity
-            style={styles.retryButton}
-            onPress={checkConnectionAndInitialize}
-            activeOpacity={0.8}
-          >
-            <CustomIcons.Wifi size={18} color={COLORS.white} />
-            <Text style={styles.retryButtonText}>Reconectar</Text>
+          <TouchableOpacity onPress={checkConnectionAndInitialize} style={styles.retryButton}>
+            <CustomIcons.RefreshCw size={18} color={COLORS.white} />
+            <Text style={styles.retryButtonText}>Reintentar</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
     );
   }
 
-  // Calcular posición del input y padding de mensajes
-  const inputBottom = keyboardHeight > 0 ? keyboardHeight : TAB_BAR_HEIGHT;
-  const messagesPadding = inputBottom + INPUT_CONTAINER_HEIGHT + SAFE_SPACING;
-
   return (
     <SafeAreaView style={styles.safeArea}>
-      <StatusBar
-        barStyle="dark-content"
-        backgroundColor="transparent"
-        translucent
-      />
-      
       <View style={styles.container}>
-        {/* Header */}
         <View style={styles.header}>
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={() => navigation.goBack()}
-            activeOpacity={0.7}
-          >
+          <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
             <CustomIcons.ArrowLeft size={22} color={COLORS.text} />
           </TouchableOpacity>
-          
           <View style={styles.headerInfo}>
             <Text style={styles.headerTitle}>Asistente Tranki</Text>
             {emotion && (
               <View style={styles.emotionChip}>
-                <Text style={styles.emotionChipText}>{emotion.label}</Text>
+                <Text style={styles.emotionChipText}>{emotion.emoji} {emotion.label}</Text>
               </View>
             )}
           </View>
-
-          <View style={styles.botIndicator}>
-            <View style={styles.botIndicatorDot} />
-          </View>
         </View>
 
-        {/* Messages */}
         <FlatList
           ref={flatListRef}
           data={messages}
           renderItem={renderMessage}
           keyExtractor={item => item.id}
-          inverted
-          contentContainerStyle={[
-            styles.messagesContent,
-            { paddingBottom: messagesPadding }
-          ]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="interactive"
-          ListHeaderComponent={ListHeaderComponent}
+          contentContainerStyle={{
+            flexGrow: 1,
+            justifyContent: 'flex-end',
+            paddingHorizontal: 16,
+            paddingBottom: inputContainerHeight,
+            paddingTop: 16,
+          }}
+          ListFooterComponent={isTyping ? <TypingIndicator /> : null}
         />
 
-        {/* Input - Posición absoluta */}
-        <View style={[styles.inputContainer, { bottom: inputBottom }]}>
+        <Animated.View
+          style={[styles.inputContainer, { bottom: inputBottomAnim }]}
+          onLayout={(e) => {
+            const { height } = e.nativeEvent.layout;
+            if (height > 0 && height !== inputContainerHeight) {
+              setInputContainerHeight(height);
+            }
+          }}
+        >
           <View style={styles.inputWrapper}>
             <TextInput
+              ref={inputRef}
               style={styles.textInput}
               value={inputText}
               onChangeText={setInputText}
-              placeholder={
-                connectionStatus === 'connected' 
-                  ? "Escribe un mensaje..." 
-                  : "Conectando..."
-              }
+              placeholder="Escribe un mensaje..."
               placeholderTextColor={COLORS.textMuted}
               multiline
               maxLength={500}
@@ -395,21 +313,18 @@ const ChatScreen = ({ route, navigation }) => {
               blurOnSubmit={false}
               onSubmitEditing={handleSendMessage}
             />
-            
             <TouchableOpacity
               style={[
                 styles.sendButton,
-                (!inputText.trim() || isTyping || connectionStatus !== 'connected') 
-                  && styles.sendButtonDisabled
+                (!inputText.trim() || isTyping || connectionStatus !== 'connected') && styles.sendButtonDisabled
               ]}
               onPress={handleSendMessage}
               disabled={!inputText.trim() || isTyping || connectionStatus !== 'connected'}
-              activeOpacity={0.8}
             >
               <CustomIcons.Send size={18} color={COLORS.white} />
             </TouchableOpacity>
           </View>
-        </View>
+        </Animated.View>
       </View>
     </SafeAreaView>
   );
@@ -418,16 +333,16 @@ const ChatScreen = ({ route, navigation }) => {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#F5F5F5',
+    backgroundColor: '#F8F9FA',
   },
   container: {
     flex: 1,
   },
-  
-  // Header
+
+  // Header Styles
   header: {
     backgroundColor: COLORS.white,
-    paddingTop: Platform.OS === 'ios' ? 10 : 60,
+    paddingTop: Platform.OS === 'ios' ? 10 : StatusBar.currentHeight + 10,
     paddingBottom: 16,
     paddingHorizontal: 16,
     flexDirection: 'row',
@@ -439,6 +354,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 3,
     elevation: 3,
+    zIndex: 10,
   },
   backButton: {
     width: 40,
@@ -456,7 +372,11 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '700',
     color: '#1A1A1A',
-    marginBottom: 2,
+    marginBottom: 4,
+  },
+  headerSubtitle: {
+    fontSize: 13,
+    color: '#6B7280',
   },
   emotionChip: {
     flexDirection: 'row',
@@ -468,7 +388,7 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
   },
   emotionChipText: {
-    fontSize: 11,
+    fontSize: 12,
     color: COLORS.primary,
     fontWeight: '600',
   },
@@ -491,15 +411,17 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: COLORS.white,
   },
-  
-  // Messages
+
+  // Messages Styles - PADDING MOVIDO AL contentContainerStyle
   messagesContent: {
     paddingHorizontal: 16,
     paddingTop: 16,
+    // paddingBottom se aplica dinámicamente en el FlatList
+    flexGrow: 1, // Importante para que el padding funcione en listas cortas
   },
   messageContainer: {
     flexDirection: 'row',
-    marginBottom: 12,
+    marginBottom: 16,
     alignItems: 'flex-end',
   },
   botMessageContainer: {
@@ -516,6 +438,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 8,
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
   },
   messageBubble: {
     maxWidth: '75%',
@@ -528,13 +455,18 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: 4,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
+    shadowOpacity: 0.08,
+    shadowRadius: 3,
+    elevation: 2,
   },
   userMessage: {
     backgroundColor: COLORS.primary,
     borderBottomRightRadius: 4,
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 3,
   },
   messageText: {
     fontSize: 15,
@@ -550,41 +482,48 @@ const styles = StyleSheet.create({
   timestamp: {
     fontSize: 11,
     marginTop: 2,
+    alignSelf: 'flex-end', // Asegura que el timestamp esté a la derecha
   },
   botTimestamp: {
     color: '#9CA3AF',
   },
   userTimestamp: {
     color: COLORS.white,
-    opacity: 0.7,
+    opacity: 0.8,
   },
   typingBubble: {
     paddingVertical: 16,
+    paddingHorizontal: 20,
   },
   typingDots: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: 6,
   },
   typingDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
     backgroundColor: COLORS.primary,
-    opacity: 0.4,
   },
-  
-  // Input con posición absoluta
+
+  // Input Styles - CON POSITION ABSOLUTE Y ANIMACIÓN
   inputContainer: {
     position: 'absolute',
     left: 0,
     right: 0,
+    bottom: 0, // La animación controla la posición real
     backgroundColor: COLORS.white,
     paddingHorizontal: 16,
     paddingTop: 12,
-    paddingBottom: Platform.OS === 'ios' ? 20 : 16,
+    paddingBottom: Platform.OS === 'ios' ? TAB_BAR_HEIGHT + 8 : TAB_BAR_HEIGHT + 8,
     borderTopWidth: 1,
     borderTopColor: '#E5E7EB',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 10,
   },
   inputWrapper: {
     flexDirection: 'row',
@@ -601,7 +540,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: '#1A1A1A',
     marginRight: 12,
-    paddingTop: 8,
+    paddingTop: Platform.OS === 'ios' ? 8 : 0,
     paddingBottom: 8,
     maxHeight: 100,
     lineHeight: 20,
@@ -624,13 +563,14 @@ const styles = StyleSheet.create({
     shadowOpacity: 0,
     elevation: 0,
   },
-  
-  // Error
+
+  // Error Styles
   errorContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     padding: 32,
+    marginBottom: TAB_BAR_HEIGHT,
   },
   errorTitle: {
     fontSize: 20,
