@@ -13,7 +13,8 @@ import {
   orderBy,
   serverTimestamp,
   deleteDoc,
-  writeBatch
+  writeBatch,
+  limit
 } from '@react-native-firebase/firestore';
 import { 
   getAuth, 
@@ -585,6 +586,43 @@ class FirebaseService {
     } catch (error) {
       console.error('❌ Error exporting user data:', error);
       throw error;
+    }
+  }
+
+  // Agrega esto en src/services/firebase.js
+
+  // Obtener la última emoción registrada (para la pantalla de inicio)
+  async getLastEmotion(userId) {
+    try {
+      const now = new Date();
+      const today = formatDate(now);
+      
+      // 1. Intentar buscar en los registros detallados de HOY primero
+      const todayEmotions = await this.getTodayEmotions(userId, today);
+      if (todayEmotions.length > 0) {
+        // Retornar el último del array (asumiendo orden cronológico)
+        return todayEmotions[todayEmotions.length - 1]; 
+      }
+
+      // 2. Si no hay hoy, buscar el último resumen diario guardado
+      const emotionsRef = collection(this.db, 'users', userId, 'emotions');
+      const q = query(emotionsRef, orderBy('date', 'desc'), limit(1));
+      const snapshot = await getDocs(q);
+
+      if (!snapshot.empty) {
+        const data = snapshot.docs[0].data();
+        // Adaptar el formato para que coincida con lo que espera la UI
+        return {
+          id: data.emotion, // La UI espera 'id', la BD tiene 'emotion'
+          label: data.emotion.charAt(0).toUpperCase() + data.emotion.slice(1),
+          ...data
+        };
+      }
+      
+      return null;
+    } catch (error) {
+      console.error('❌ Error getting last emotion:', error);
+      return null;
     }
   }
 

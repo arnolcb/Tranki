@@ -1,5 +1,5 @@
-// src/screens/AuthScreen.js - Optimizado con mejor UX/UI
-import React, {useState} from 'react';
+// src/screens/AuthScreen.js - Modern One-Page Design (No Scroll)
+import React, {useState, useRef, useEffect} from 'react';
 import {
   View,
   Text,
@@ -9,7 +9,6 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
-  ScrollView,
   StatusBar,
   SafeAreaView,
   Animated,
@@ -27,45 +26,51 @@ import {
   EyeIcon,
 } from '../components/icons';
 
-const {height: SCREEN_HEIGHT} = Dimensions.get('window');
+const {height: SCREEN_HEIGHT, width: SCREEN_WIDTH} = Dimensions.get('window');
 
 const AuthScreen = ({navigation}) => {
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
-  const [age, setAge] = useState('');
-  const [role, setRole] = useState('estudiante');
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
-  // Animación sutil para transición login/registro
-  const fadeAnim = React.useRef(new Animated.Value(1)).current;
+  // Animaciones
+  const fadeAnim = useRef(new Animated.Value(1)).current;
+  const slideAnim = useRef(new Animated.Value(0)).current;
 
-  React.useEffect(() => {
-    StatusBar.setBarStyle('dark-content');
+  useEffect(() => {
+    StatusBar.setBarStyle('light-content');
     if (Platform.OS === 'android') {
-      StatusBar.setBackgroundColor('transparent');
-      StatusBar.setTranslucent(true);
+      StatusBar.setBackgroundColor('#2C3E50');
+      StatusBar.setTranslucent(false);
     }
 
     GoogleSignin.configure({
       webClientId: Config.GOOGLE_WEB_CLIENT_ID,
       offlineAccess: true,
     });
+
+    // Animación de entrada
+    Animated.timing(slideAnim, {
+      toValue: 1,
+      duration: 600,
+      useNativeDriver: true,
+    }).start();
   }, []);
 
   const toggleAuthMode = () => {
     Animated.sequence([
       Animated.timing(fadeAnim, {
         toValue: 0.3,
-        duration: 150,
+        duration: 120,
         useNativeDriver: true,
       }),
       Animated.timing(fadeAnim, {
         toValue: 1,
-        duration: 150,
+        duration: 120,
         useNativeDriver: true,
       }),
     ]).start();
@@ -83,16 +88,16 @@ const AuthScreen = ({navigation}) => {
       if (isLogin) {
         await FirebaseService.signInWithEmail(email, password);
       } else {
-        if (!name || !age) {
-          Alert.alert('Error', 'Por favor completa todos los campos');
+        if (!name) {
+          Alert.alert('Error', 'Por favor ingresa tu nombre');
           setLoading(false);
           return;
         }
 
         await FirebaseService.createUserWithEmail(email, password, {
           name,
-          age: parseInt(age),
-          role,
+          age: 25, // Valor por defecto
+          role: 'estudiante', // Valor por defecto
         });
       }
       navigation.replace('Main');
@@ -198,235 +203,155 @@ const AuthScreen = ({navigation}) => {
     }
   };
 
-  const getRoleDisplayName = roleKey => {
-    switch (roleKey) {
-      case 'estudiante':
-        return 'Estudiante';
-      case 'trabajador':
-        return 'Trabajador';
-      case 'ambos':
-        return 'Ambos';
-      default:
-        return roleKey;
-    }
-  };
-
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar
-        barStyle="dark-content"
-        backgroundColor="transparent"
-        translucent
-      />
+      <StatusBar barStyle="light-content" backgroundColor="#2C3E50" />
       <KeyboardAvoidingView
         style={styles.keyboardContainer}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}>
-        <ScrollView
-          contentContainerStyle={styles.scrollContainer}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-          bounces={false}>
-          {/* Logo minimalista centrado */}
-          <View style={styles.logoSection}>
-            <View style={styles.logoCircle}>
-              <Text style={styles.logoText}>e</Text>
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={0}>
+        <View style={styles.content}>
+          {/* Header minimalista */}
+          <Animated.View
+            style={[
+              styles.header,
+              {
+                opacity: slideAnim,
+                transform: [
+                  {
+                    translateY: slideAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [-30, 0],
+                    }),
+                  },
+                ],
+              },
+            ]}>
+            <View style={styles.logoContainer}>
+              <View style={styles.logoDot} />
+              <Text style={styles.logoText}>tranki</Text>
             </View>
-          </View>
+            <Text style={styles.welcomeText}>
+              {isLogin ? 'Bienvenido de vuelta' : 'Crea tu cuenta'}
+            </Text>
+          </Animated.View>
 
-          {/* Tarjeta principal con animación */}
-          <Animated.View style={[styles.card, {opacity: fadeAnim}]}>
-            {/* Header */}
-            <View style={styles.cardHeader}>
-              <Text style={styles.title}>
-                {isLogin ? 'Bienvenido de vuelta' : 'Crear nueva cuenta'}
+          {/* Formulario compacto */}
+          <Animated.View style={[styles.formContainer, {opacity: fadeAnim}]}>
+            {/* Google Login - PROMINENTE */}
+            <TouchableOpacity
+              style={[
+                styles.googleButton,
+                googleLoading && styles.buttonDisabled,
+              ]}
+              onPress={handleGoogleSignIn}
+              disabled={googleLoading}
+              activeOpacity={0.8}>
+              <GoogleIcon size={20} />
+              <Text style={styles.googleButtonText}>
+                {googleLoading
+                  ? 'Conectando...'
+                  : 'Continuar con Google'}
               </Text>
-              <Text style={styles.subtitle}>
-                {isLogin
-                  ? 'Ingresa tus credenciales para continuar'
-                  : 'Completa tus datos para registrarte'}
-              </Text>
-            </View>
-
-            {/* Campos de formulario */}
-            <View style={styles.formSection}>
-              {/* Campos de registro */}
-              {!isLogin && (
-                <>
-                  <View style={styles.inputWrapper}>
-                    <Text style={styles.label}>NOMBRE COMPLETO</Text>
-                    <TextInput
-                      style={styles.input}
-                      placeholder="Ingresa tu nombre"
-                      value={name}
-                      onChangeText={setName}
-                      autoCapitalize="words"
-                      placeholderTextColor={COLORS.textMuted}
-                      returnKeyType="next"
-                    />
-                  </View>
-
-                  <View style={styles.inputWrapper}>
-                    <Text style={styles.label}>EDAD</Text>
-                    <TextInput
-                      style={styles.input}
-                      placeholder="Ej. 25"
-                      value={age}
-                      onChangeText={setAge}
-                      keyboardType="numeric"
-                      maxLength={2}
-                      placeholderTextColor={COLORS.textMuted}
-                      returnKeyType="next"
-                    />
-                  </View>
-
-                  <View style={styles.inputWrapper}>
-                    <Text style={styles.label}>¿QUÉ ERES?</Text>
-                    <View style={styles.roleContainer}>
-                      {['estudiante', 'trabajador', 'ambos'].map(r => (
-                        <TouchableOpacity
-                          key={r}
-                          style={[
-                            styles.roleButton,
-                            role === r && styles.roleButtonActive,
-                          ]}
-                          onPress={() => setRole(r)}
-                          activeOpacity={0.7}>
-                          <Text
-                            style={[
-                              styles.roleText,
-                              role === r && styles.roleTextActive,
-                            ]}>
-                            {getRoleDisplayName(r)}
-                          </Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                  </View>
-                </>
-              )}
-
-              {/* Email */}
-              <View style={styles.inputWrapper}>
-                <Text style={styles.label}>CORREO ELECTRÓNICO</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="nombre@ejemplo.com"
-                  value={email}
-                  onChangeText={setEmail}
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  placeholderTextColor={COLORS.textMuted}
-                  returnKeyType="next"
-                />
-              </View>
-
-              {/* Contraseña */}
-              <View style={styles.inputWrapper}>
-                <View style={styles.labelRow}>
-                  <Text style={styles.label}>CONTRASEÑA</Text>
-                  {isLogin && (
-                    <TouchableOpacity
-                      onPress={handleForgotPassword}
-                      activeOpacity={0.7}
-                      hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}>
-                      <Text style={styles.forgotText}>
-                        ¿Olvidaste tu contraseña?
-                      </Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
-                <View style={styles.passwordContainer}>
-                  <TextInput
-                    style={styles.passwordInput}
-                    placeholder="Mínimo 6 caracteres"
-                    value={password}
-                    onChangeText={setPassword}
-                    secureTextEntry={!showPassword}
-                    placeholderTextColor={COLORS.textMuted}
-                    returnKeyType="done"
-                    onSubmitEditing={handleAuth}
-                  />
-                  <TouchableOpacity
-                    onPress={() => setShowPassword(!showPassword)}
-                    style={styles.eyeButton}
-                    hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}>
-                    <EyeIcon size={20} color="#6B7280" closed={!showPassword} />
-                  </TouchableOpacity>
-                </View>
-              </View>
-
-              {/* Botón principal */}
-              <TouchableOpacity
-                style={[
-                  styles.mainButton,
-                  loading && styles.mainButtonDisabled,
-                ]}
-                onPress={handleAuth}
-                disabled={loading}
-                activeOpacity={0.85}>
-                <Text style={styles.mainButtonText}>
-                  {loading
-                    ? 'Procesando...'
-                    : isLogin
-                    ? 'Iniciar sesión'
-                    : 'Crear cuenta'}
-                </Text>
-              </TouchableOpacity>
-            </View>
+            </TouchableOpacity>
 
             {/* Divider */}
             <View style={styles.divider}>
               <View style={styles.dividerLine} />
-              <Text style={styles.dividerText}>O inicia sesión con</Text>
+              <Text style={styles.dividerText}>o continuar con email</Text>
               <View style={styles.dividerLine} />
             </View>
 
-            {/* Social Login */}
-            <View style={styles.socialContainer}>
+            {/* Nombre (solo registro) */}
+            {!isLogin && (
+              <View style={styles.inputContainer}>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Nombre completo"
+                  value={name}
+                  onChangeText={setName}
+                  autoCapitalize="words"
+                  placeholderTextColor="#A0AEC0"
+                  returnKeyType="next"
+                />
+              </View>
+            )}
+
+            {/* Email */}
+            <View style={styles.inputContainer}>
+              <TextInput
+                style={styles.input}
+                placeholder="Correo electrónico"
+                value={email}
+                onChangeText={setEmail}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+                placeholderTextColor="#A0AEC0"
+                returnKeyType="next"
+              />
+            </View>
+
+            {/* Password */}
+            <View style={styles.inputContainer}>
+              <View style={styles.passwordWrapper}>
+                <TextInput
+                  style={styles.passwordInput}
+                  placeholder="Contraseña"
+                  value={password}
+                  onChangeText={setPassword}
+                  secureTextEntry={!showPassword}
+                  placeholderTextColor="#A0AEC0"
+                  returnKeyType="done"
+                  onSubmitEditing={handleAuth}
+                />
+                <TouchableOpacity
+                  onPress={() => setShowPassword(!showPassword)}
+                  style={styles.eyeIcon}
+                  hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}>
+                  <EyeIcon size={20} color="#A0AEC0" closed={!showPassword} />
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* Forgot Password (solo login) */}
+            {isLogin && (
               <TouchableOpacity
-                style={[
-                  styles.socialButton,
-                  googleLoading && styles.socialButtonDisabled,
-                ]}
-                onPress={handleGoogleSignIn}
-                disabled={googleLoading}
+                onPress={handleForgotPassword}
+                style={styles.forgotButton}
                 activeOpacity={0.7}>
-                <GoogleIcon size={24} />
+                <Text style={styles.forgotText}>¿Olvidaste tu contraseña?</Text>
               </TouchableOpacity>
+            )}
 
-              <TouchableOpacity
-                style={styles.socialButton}
-                activeOpacity={0.7}
-                disabled>
-                <FacebookIcon size={24} />
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.socialButton}
-                activeOpacity={0.7}
-                disabled>
-                <AppleIcon size={24} />
-              </TouchableOpacity>
-            </View>
-
-            {/* Switch entre login/registro */}
-            <View style={styles.footer}>
-              <Text style={styles.footerQuestion}>
-                {isLogin ? '¿No tienes cuenta?' : '¿Ya tienes cuenta?'}
+            {/* Main Action Button */}
+            <TouchableOpacity
+              style={[styles.mainButton, loading && styles.buttonDisabled]}
+              onPress={handleAuth}
+              disabled={loading}
+              activeOpacity={0.9}>
+              <Text style={styles.mainButtonText}>
+                {loading
+                  ? 'Procesando...'
+                  : isLogin
+                  ? 'Iniciar sesión'
+                  : 'Crear cuenta'}
               </Text>
-              <TouchableOpacity onPress={toggleAuthMode} activeOpacity={0.7}>
-                <Text style={styles.footerLink}>
-                  {isLogin ? 'Regístrate' : 'Inicia sesión'}
-                </Text>
-              </TouchableOpacity>
-            </View>
+            </TouchableOpacity>
           </Animated.View>
 
-          {/* Espaciado inferior para mejor scroll en teclado */}
-          <View style={styles.bottomSpacer} />
-        </ScrollView>
+          {/* Footer */}
+          <View style={styles.footer}>
+            <Text style={styles.footerText}>
+              {isLogin ? '¿No tienes cuenta?' : '¿Ya tienes cuenta?'}
+            </Text>
+            <TouchableOpacity onPress={toggleAuthMode} activeOpacity={0.7}>
+              <Text style={styles.footerLink}>
+                {isLogin ? 'Regístrate' : 'Inicia sesión'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -435,170 +360,151 @@ const AuthScreen = ({navigation}) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F0F4F8',
+    backgroundColor: '#2C3E50',
   },
   keyboardContainer: {
     flex: 1,
   },
-  scrollContainer: {
-    flexGrow: 1,
-    paddingHorizontal: 24,
-    paddingTop: Platform.OS === 'ios' ? 60 : 80,
-    paddingBottom: 40,
+  content: {
+    flex: 1,
+    paddingHorizontal: 28,
+    justifyContent: 'center',
   },
 
-  // Logo Section
-  logoSection: {
+  // Header
+  header: {
     alignItems: 'center',
-    marginBottom: 32,
+    marginBottom: 40,
   },
-  logoCircle: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: '#7DB9DE',
-    justifyContent: 'center',
+  logoContainer: {
+    flexDirection: 'row',
     alignItems: 'center',
-    shadowColor: '#7DB9DE',
-    shadowOffset: {width: 0, height: 4},
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
+    marginBottom: 12,
+  },
+  logoDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#507F93',
+    marginRight: 8,
   },
   logoText: {
-    fontSize: 42,
-    fontWeight: '300',
+    fontSize: 32,
+    fontWeight: '700',
     color: '#FFFFFF',
-    fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif',
+    letterSpacing: 1,
+  },
+  welcomeText: {
+    fontSize: 16,
+    color: '#FFFFFF',
+    fontWeight: '400',
+    opacity: 0.7,
   },
 
-  // Card
-  card: {
+  // Form
+  formContainer: {
+    width: '100%',
+  },
+  googleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: '#FFFFFF',
-    borderRadius: 24,
-    padding: 28,
+    paddingVertical: 16,
+    borderRadius: 14,
+    marginBottom: 24,
     shadowColor: '#000',
     shadowOffset: {width: 0, height: 2},
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    elevation: 4,
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
   },
-  cardHeader: {
-    marginBottom: 28,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#1A1A1A',
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  subtitle: {
-    fontSize: 14,
-    color: '#6B7280',
-    textAlign: 'center',
-    lineHeight: 20,
+  googleButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#2C3E50',
+    marginLeft: 12,
   },
 
-  // Form Section
-  formSection: {
+  // Divider
+  divider: {
+    flexDirection: 'row',
+    alignItems: 'center',
     marginBottom: 24,
   },
-  inputWrapper: {
-    marginBottom: 20,
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: '#507F93',
+    opacity: 0.3,
   },
-  label: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#6B7280',
-    marginBottom: 8,
-    letterSpacing: 0.5,
-  },
-  labelRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  forgotText: {
-    fontSize: 12,
-    color: '#7DB9DE',
+  dividerText: {
+    marginHorizontal: 16,
+    fontSize: 13,
+    color: '#FFFFFF',
+    opacity: 0.6,
     fontWeight: '500',
   },
-  input: {
-    backgroundColor: '#F9FAFB',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    fontSize: 15,
-    color: '#1A1A1A',
+
+  // Inputs
+  inputContainer: {
+    marginBottom: 16,
   },
-  passwordContainer: {
+  input: {
+    backgroundColor: '#34495E',
+    borderWidth: 1,
+    borderColor: '#507F93',
+    borderRadius: 12,
+    paddingHorizontal: 18,
+    paddingVertical: 16,
+    fontSize: 15,
+    color: '#FFFFFF',
+  },
+  passwordWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F9FAFB',
+    backgroundColor: '#34495E',
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: '#507F93',
     borderRadius: 12,
   },
   passwordInput: {
     flex: 1,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingHorizontal: 18,
+    paddingVertical: 16,
     fontSize: 15,
-    color: '#1A1A1A',
+    color: '#FFFFFF',
   },
-  eyeButton: {
-    paddingHorizontal: 12,
+  eyeIcon: {
+    paddingHorizontal: 14,
   },
 
-
-  // Role Selection
-  roleContainer: {
-    flexDirection: 'row',
-    gap: 10,
+  // Forgot Password
+  forgotButton: {
+    alignSelf: 'flex-end',
+    marginBottom: 24,
   },
-  roleButton: {
-    flex: 1,
-    paddingVertical: 12,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    borderRadius: 12,
-    alignItems: 'center',
-    backgroundColor: '#F9FAFB',
-  },
-  roleButtonActive: {
-    backgroundColor: '#EBF5FB',
-    borderColor: '#7DB9DE',
-    borderWidth: 2,
-  },
-  roleText: {
+  forgotText: {
     fontSize: 13,
-    color: '#6B7280',
+    color: '#FFFFFF',
     fontWeight: '500',
-  },
-  roleTextActive: {
-    color: '#7DB9DE',
-    fontWeight: '700',
+    opacity: 0.8,
   },
 
   // Main Button
   mainButton: {
-    backgroundColor: '#5A9AB8',
+    backgroundColor: '#507F93',
     paddingVertical: 16,
     borderRadius: 12,
     alignItems: 'center',
-    marginTop: 8,
-    shadowColor: '#5A9AB8',
+    shadowColor: '#507F93',
     shadowOffset: {width: 0, height: 4},
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
     elevation: 6,
   },
-  mainButtonDisabled: {
-    opacity: 0.6,
+  buttonDisabled: {
+    opacity: 0.5,
     shadowOpacity: 0,
     elevation: 0,
   },
@@ -606,51 +512,7 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '700',
-    letterSpacing: 0.3,
-  },
-
-  // Divider
-  divider: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginVertical: 24,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: '#E5E7EB',
-  },
-  dividerText: {
-    marginHorizontal: 16,
-    fontSize: 13,
-    color: '#9CA3AF',
-    fontWeight: '500',
-  },
-
-  // Social Login
-  socialContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 16,
-    marginBottom: 24,
-  },
-  socialButton: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    backgroundColor: '#FFFFFF',
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: {width: 0, height: 1},
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  socialButtonDisabled: {
-    opacity: 0.5,
+    letterSpacing: 0.5,
   },
 
   // Footer
@@ -658,21 +520,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
+    marginTop: 32,
     gap: 6,
   },
-  footerQuestion: {
+  footerText: {
     fontSize: 14,
-    color: '#6B7280',
+    color: '#FFFFFF',
+    opacity: 0.7,
   },
   footerLink: {
     fontSize: 14,
-    color: '#7DB9DE',
+    color: '#FFFFFF',
     fontWeight: '700',
-  },
-
-  // Bottom Spacer
-  bottomSpacer: {
-    height: 60,
   },
 });
 

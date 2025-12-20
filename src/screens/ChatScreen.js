@@ -33,6 +33,7 @@ const ChatScreen = ({ route, navigation }) => {
   const [connectionStatus, setConnectionStatus] = useState('checking');
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [inputContainerHeight, setInputContainerHeight] = useState(INPUT_AREA_DEFAULT_HEIGHT);
+  const [hasInitialized, setHasInitialized] = useState(false);
 
   const flatListRef = useRef(null);
   const inputRef = useRef(null);
@@ -76,45 +77,81 @@ const ChatScreen = ({ route, navigation }) => {
       keyboardWillShowListener.remove();
       keyboardWillHideListener.remove();
     };
-  }, [emotion]);
+  }, []);
+
+  // Efecto adicional para asegurar que se inicialice la conversación
+  useEffect(() => {
+    if (connectionStatus === 'connected' && !hasInitialized && messages.length === 0) {
+      console.log('🎯 Iniciando conversación automáticamente...');
+      initializeConversation();
+    }
+  }, [connectionStatus, hasInitialized, messages.length]);
 
   const checkConnectionAndInitialize = async () => {
+    console.log('🔍 Verificando conexión...');
     setConnectionStatus('checking');
     try {
       const connectionTest = await GroqService.testConnection();
+      console.log('📡 Resultado de conexión:', connectionTest);
       if (connectionTest.success) {
         setConnectionStatus('connected');
-        if (emotion) setTimeout(() => initializeConversation(), 300);
-      } else setConnectionStatus('error');
-    } catch {
+        console.log('✅ Conexión establecida, esperando para inicializar...');
+      } else {
+        setConnectionStatus('error');
+        console.error('❌ Error de conexión:', connectionTest.message);
+      }
+    } catch (error) {
       setConnectionStatus('error');
+      console.error('❌ Error al verificar conexión:', error);
     }
   };
 
   const initializeConversation = async () => {
-    if (connectionStatus !== 'connected') return;
+    if (connectionStatus !== 'connected') {
+      console.log('⏸️ Conexión no lista, esperando...');
+      return;
+    }
+    
+    if (hasInitialized) {
+      console.log('⏭️ Ya se inicializó la conversación');
+      return;
+    }
+
+    console.log('🚀 Inicializando conversación...');
     setIsTyping(true);
+    setHasInitialized(true);
+    
     try {
       const user = auth().currentUser;
+      const userName = user?.displayName?.split(' ')[0] || 'Usuario';
+      
+      console.log('👤 Usuario:', userName);
+      console.log('😊 Emoción:', emotion?.label || 'No registrada');
+      
       let userContext = {};
       if (user?.uid) {
         try {
           userContext = await getUserContext(user.uid);
-        } catch {
+          console.log('📊 Contexto obtenido:', userContext);
+        } catch (error) {
+          console.log('⚠️ Error obteniendo contexto:', error);
           userContext = {};
         }
       }
-      const welcomeMessage = await GroqService.getContextualResponse(
-        emotion,
-        `Hola, hoy me siento ${emotion.label.toLowerCase()}`,
-        userContext
-      );
+
+      // Usar el nuevo método específico para el saludo inicial
+      console.log('💬 Solicitando saludo inicial a Groq...');
+      const welcomeMessage = await GroqService.getInitialGreeting(userName, emotion, userContext);
+      console.log('✅ Saludo recibido:', welcomeMessage);
+
       setTimeout(() => {
         addBotMessage(welcomeMessage);
         setIsTyping(false);
       }, 600);
     } catch (error) {
+      console.error('🚨 Error en inicialización:', error);
       setIsTyping(false);
+      setHasInitialized(false); // Resetear para permitir reintentos
       Alert.alert(
         'Error de IA',
         `No pude inicializar la conversación: ${error.message}`,
@@ -153,12 +190,14 @@ const ChatScreen = ({ route, navigation }) => {
   };
 
   const addBotMessage = (message) => {
+    console.log('🤖 Agregando mensaje del bot:', message);
     const newMessage = { id: Date.now().toString(), text: message, isBot: true, timestamp: new Date() };
     setMessages(prev => [...prev, newMessage]);
     setConversationHistory(prev => [...prev, { role: 'assistant', content: message }].slice(-12));
   };
 
   const addUserMessage = (message) => {
+    console.log('👤 Agregando mensaje del usuario:', message);
     const newMessage = { id: Date.now().toString(), text: message, isBot: false, timestamp: new Date() };
     setMessages(prev => [...prev, newMessage]);
     setConversationHistory(prev => [...prev, { role: 'user', content: message }].slice(-12));
@@ -287,6 +326,14 @@ const ChatScreen = ({ route, navigation }) => {
             paddingTop: 16,
           }}
           ListFooterComponent={isTyping ? <TypingIndicator /> : null}
+          ListEmptyComponent={
+            connectionStatus === 'connected' && !isTyping ? (
+              <View style={styles.emptyContainer}>
+                <CustomIcons.MessageCircle size={48} color={COLORS.textMuted} />
+                <Text style={styles.emptyText}>Iniciando conversación...</Text>
+              </View>
+            ) : null
+          }
         />
 
         <Animated.View
@@ -412,12 +459,11 @@ const styles = StyleSheet.create({
     borderColor: COLORS.white,
   },
 
-  // Messages Styles - PADDING MOVIDO AL contentContainerStyle
+  // Messages Styles
   messagesContent: {
     paddingHorizontal: 16,
     paddingTop: 16,
-    // paddingBottom se aplica dinámicamente en el FlatList
-    flexGrow: 1, // Importante para que el padding funcione en listas cortas
+    flexGrow: 1,
   },
   messageContainer: {
     flexDirection: 'row',
@@ -482,7 +528,7 @@ const styles = StyleSheet.create({
   timestamp: {
     fontSize: 11,
     marginTop: 2,
-    alignSelf: 'flex-end', // Asegura que el timestamp esté a la derecha
+    alignSelf: 'flex-end',
   },
   botTimestamp: {
     color: '#9CA3AF',
@@ -507,12 +553,26 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primary,
   },
 
-  // Input Styles - CON POSITION ABSOLUTE Y ANIMACIÓN
+  // Empty State
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 40,
+  },
+  emptyText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: COLORS.textMuted,
+    fontWeight: '500',
+  },
+
+  // Input Styles
   inputContainer: {
     position: 'absolute',
     left: 0,
     right: 0,
-    bottom: 0, // La animación controla la posición real
+    bottom: 0,
     backgroundColor: COLORS.white,
     paddingHorizontal: 16,
     paddingTop: 12,

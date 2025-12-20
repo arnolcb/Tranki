@@ -108,10 +108,16 @@ IMPORTANTE:
       
       neutral: `El usuario se siente neutral hoy. Ayúdalo a encontrar motivación y dirección, sugiere actividades específicas para mejorar su estado de ánimo (ejercicio, actividades creativas, conexión social), mantén una conversación positiva y genuina. Pregunta qué le gustaría explorar o lograr.`,
       
-      tranki: `El usuario se siente tranki (feliz/relajado) hoy. Celebra genuinamente este estado positivo, ayúdalo a mantener y aprovechar esta energía con actividades constructivas, y sugiere formas de usar este buen momento para crecer o ayudar a otros. Ofrece ideas específicas y significativas.`
+      tranki: `El usuario se siente tranki (feliz/relajado) hoy. Celebra genuinamente este estado positivo, ayúdalo a mantener y aprovechar esta energía con actividades constructivas, y sugiere formas de usar este buen momento para crecer o ayudar a otros. Ofrece ideas específicas y significativas.`,
+      
+      noEmotion: `El usuario no ha registrado su emoción hoy. Salúdalo de manera cálida, pregúntale cómo se siente, y recomiéndale amablemente registrar su emoción del día para hacer un mejor seguimiento de su bienestar. Mantén el mensaje breve y acogedor.`
     };
 
-    return `${basePrompt}\n\nContexto del usuario: ${emotionContext[emotion?.id] || emotionContext.neutral}`;
+    // Si no hay emoción o no tiene id válido, usar contexto noEmotion
+    const emotionId = emotion?.id || 'noEmotion';
+    const context = emotionContext[emotionId] || emotionContext.neutral;
+
+    return `${basePrompt}\n\nContexto del usuario: ${context}`;
   }
 
   // Generar respuestas con contexto de la app
@@ -120,6 +126,26 @@ IMPORTANTE:
     const fullMessage = `${contextPrompt}\n\nUsuario dice: ${userMessage}`;
     
     return await this.getChatResponse(emotion, fullMessage);
+  }
+
+  // NUEVO: Método específico para saludo inicial personalizado
+  async getInitialGreeting(userName, emotion, userContext = {}) {
+    try {
+      if (emotion) {
+        // Si hay emoción, usar el flujo normal
+        const message = `Hola ${userName}, hoy me siento ${emotion.label.toLowerCase()}`;
+        return await this.getContextualResponse(emotion, message, userContext);
+      } else {
+        // Si NO hay emoción, crear un prompt específico para el saludo
+        const contextPrompt = this.buildContextPrompt(userContext);
+        const greetingPrompt = `${contextPrompt}\n\nEs la primera interacción del día. El usuario ${userName} acaba de abrir el chat pero no ha registrado su emoción. Salúdalo de manera cálida y personalizada por su nombre, pregúntale cómo se siente hoy, y recomiéndale brevemente que puede registrar su emoción en la pantalla principal para un mejor seguimiento. Mantén el mensaje genuino, amigable y conciso (máximo 3 oraciones).`;
+        
+        return await this.getChatResponse(null, greetingPrompt);
+      }
+    } catch (error) {
+      console.error('Error en saludo inicial:', error);
+      throw error;
+    }
   }
 
   buildContextPrompt(context) {

@@ -1026,6 +1026,179 @@ const CustomIcons = {
       />
     </Svg>
   ),
+
+  Moon: ({size = 24, color = '#000'}) => (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  ),
+
+  Sun: ({size = 24, color = '#000'}) => (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Circle cx="12" cy="12" r="5" stroke={color} strokeWidth="2" />
+      <Line x1="12" y1="1" x2="12" y2="3" stroke={color} strokeWidth="2" strokeLinecap="round" />
+      <Line x1="12" y1="21" x2="12" y2="23" stroke={color} strokeWidth="2" strokeLinecap="round" />
+      <Line x1="4.22" y1="4.22" x2="5.64" y2="5.64" stroke={color} strokeWidth="2" strokeLinecap="round" />
+      <Line x1="18.36" y1="18.36" x2="19.78" y2="19.78" stroke={color} strokeWidth="2" strokeLinecap="round" />
+      <Line x1="1" y1="12" x2="3" y2="12" stroke={color} strokeWidth="2" strokeLinecap="round" />
+      <Line x1="21" y1="12" x2="23" y2="12" stroke={color} strokeWidth="2" strokeLinecap="round" />
+      <Line x1="4.22" y1="19.78" x2="5.64" y2="18.36" stroke={color} strokeWidth="2" strokeLinecap="round" />
+      <Line x1="18.36" y1="5.64" x2="19.78" y2="4.22" stroke={color} strokeWidth="2" strokeLinecap="round" />
+    </Svg>
+  ),
+
+  Edit2: ({size = 24, color = '#000'}) => (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  ),
+
+  // Icono para borrar/limpiar chat
+  Trash2: ({size = 24, color = '#000'}) => (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M3 6h18"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <Path
+        d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <Line 
+        x1="10" y1="11" x2="10" y2="17" 
+        stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" 
+      />
+      <Line 
+        x1="14" y1="11" x2="14" y2="17" 
+        stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" 
+      />
+    </Svg>
+  ),
+
+  // Agregar estos iconos al archivo src/components/CustomIcons.js
+
+  // Iconos para mood/estado
+  Happy: ({size = 24, color = '#000'}) => (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Circle
+        cx="12"
+        cy="12"
+        r="10"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+      <Path
+        d="M8 14s1.5 2 4 2 4-2 4-2"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+      <Circle cx="9" cy="9" r="1" fill={color} />
+      <Circle cx="15" cy="9" r="1" fill={color} />
+    </Svg>
+  ),
+
+  Neutral: ({size = 24, color = '#000'}) => (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Circle
+        cx="12"
+        cy="12"
+        r="10"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+      <Line
+        x1="8"
+        y1="15"
+        x2="16"
+        y2="15"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+      <Circle cx="9" cy="9" r="1" fill={color} />
+      <Circle cx="15" cy="9" r="1" fill={color} />
+    </Svg>
+  ),
+
+  Sad: ({size = 24, color = '#000'}) => (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Circle
+        cx="12"
+        cy="12"
+        r="10"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+      <Path
+        d="M8 17s1.5-2 4-2 4 2 4 2"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+      <Circle cx="9" cy="9" r="1" fill={color} />
+      <Circle cx="15" cy="9" r="1" fill={color} />
+    </Svg>
+  ),
+
+  Fire: ({size = 24, color = '#000'}) => (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M8.5 14.5A5.5 5.5 0 0014 20a5.5 5.5 0 005.5-5.5c0-3.5-2-6-5.5-9-1 3-3 3.5-5.5 4.5z"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <Path
+        d="M12 20v-8.5c0-1.5-1-2-2.5-2.5"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  ),
+
+  TrendingUp: ({size = 24, color = '#000'}) => (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M23 6l-9.5 9.5-5-5L1 18"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <Path
+        d="M17 6h6v6"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  ),
 };
 
 export default CustomIcons;
