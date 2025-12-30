@@ -1,4 +1,4 @@
-// src/screens/SleepCalendarScreen.js
+// src/screens/SleepCalendarScreen.js - Versión funcional con SVG embebidos
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
@@ -8,92 +8,106 @@ import {
   SafeAreaView,
   ScrollView,
   Animated,
-  Dimensions,
   Platform,
   StatusBar,
+  ActivityIndicator,
 } from 'react-native';
 import auth from '@react-native-firebase/auth';
-import CustomIcons from '../components/CustomIcons';
-import { COLORS } from '../constants/colors';
+import Svg, { Path, Circle, Line, Polyline } from 'react-native-svg';
+import firebaseService from '../services/firebase';
 
-const { width } = Dimensions.get('window');
-
-const THEME_COLORS = {
-  primary: '#1A2332',
-  darkBg: '#0F1419',
-  cardBg: '#1E2937',
-  accent: '#FFB74D',
-  light: '#FEFFFF',
-  deepSleep: '#4A90E2',
-  lightSleep: '#FFB74D',
-  poorSleep: '#E74C3C',
-  noData: '#374151',
+const COLORS = {
+  bg: '#0A0E14',
+  surface: '#1A1F2E',
+  surfaceLight: '#252C3D',
+  accent: '#6366F1',
+  text: '#E5E7EB',
+  textSecondary: '#9CA3AF',
+  success: '#10B981',
+  warning: '#F59E0B',
+  error: '#EF4444',
+  border: '#2D3748',
 };
 
-const SLEEP_QUALITY = {
-  DEEP: 'deep',
-  LIGHT: 'light',
-  POOR: 'poor',
-  NONE: 'none',
+// Iconos SVG
+const ChevronLeftIcon = ({ size = 24, color = '#fff', onPress }) => (
+  <TouchableOpacity onPress={onPress}>
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <Polyline points="15 18 9 12 15 6" />
+    </Svg>
+  </TouchableOpacity>
+);
+
+const ChevronRightIcon = ({ size = 24, color = '#fff' }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <Polyline points="9 18 15 12 9 6" />
+  </Svg>
+);
+
+const ClockIcon = ({ size = 24, color = '#fff' }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <Circle cx="12" cy="12" r="10" />
+    <Polyline points="12 6 12 12 16 14" />
+  </Svg>
+);
+
+const CalendarIcon = ({ size = 24, color = '#fff' }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <Path d="M3 4h18v18H3zM16 2v4M8 2v4M3 10h18" />
+  </Svg>
+);
+
+const XIcon = ({ size = 24, color = '#fff' }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <Line x1="18" y1="6" x2="6" y2="18" />
+    <Line x1="6" y1="6" x2="18" y2="18" />
+  </Svg>
+);
+
+const TrendingUpIcon = ({ size = 24, color = '#fff' }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <Polyline points="23 6 13.5 15.5 8.5 10.5 1 18" />
+    <Polyline points="17 6 23 6 23 12" />
+  </Svg>
+);
+
+const MoonIcon = ({ size = 24, color = '#fff' }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <Path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+  </Svg>
+);
+
+const AlertCircleIcon = ({ size = 24, color = '#fff' }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <Circle cx="12" cy="12" r="10" />
+    <Line x1="12" y1="8" x2="12" y2="12" />
+    <Line x1="12" y1="16" x2="12.01" y2="16" />
+  </Svg>
+);
+
+// Helper para formatear fechas
+const formatDate = (date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 };
 
-// Datos de ejemplo para el mes
-const generateMonthData = () => {
-  const days = [];
-  const daysInMonth = 31;
-  const startDay = 1; // Lunes (0 = Domingo, 1 = Lunes, etc.)
-
-  // Días vacíos al inicio
-  for (let i = 0; i < startDay; i++) {
-    days.push({ isEmpty: true });
-  }
-
-  // Días del mes
-  for (let day = 1; day <= daysInMonth; day++) {
-    const random = Math.random();
-    let quality = SLEEP_QUALITY.NONE;
-    let hours = 0;
-
-    if (day <= new Date().getDate()) {
-      if (random > 0.7) {
-        quality = SLEEP_QUALITY.DEEP;
-        hours = 7 + Math.random() * 2;
-      } else if (random > 0.4) {
-        quality = SLEEP_QUALITY.LIGHT;
-        hours = 6 + Math.random();
-      } else if (random > 0.2) {
-        quality = SLEEP_QUALITY.POOR;
-        hours = 4 + Math.random() * 2;
-      }
-    }
-
-    days.push({
-      day,
-      quality,
-      hours: Math.round(hours * 10) / 10,
-      date: `2024-01-${day.toString().padStart(2, '0')}`,
-    });
-  }
-
-  return days;
+const getDayColor = (hours) => {
+  if (!hours || hours === 0) return COLORS.border;
+  if (hours >= 7) return COLORS.success;
+  if (hours >= 6) return COLORS.warning;
+  return COLORS.error;
 };
 
-const SAMPLE_CALENDAR_DATA = generateMonthData();
-
-const getDayColor = (quality) => {
-  switch (quality) {
-    case SLEEP_QUALITY.DEEP:
-      return THEME_COLORS.deepSleep;
-    case SLEEP_QUALITY.LIGHT:
-      return THEME_COLORS.lightSleep;
-    case SLEEP_QUALITY.POOR:
-      return THEME_COLORS.poorSleep;
-    default:
-      return THEME_COLORS.noData;
-  }
+const getQualityLabel = (hours) => {
+  if (!hours || hours === 0) return 'Sin datos';
+  if (hours >= 7) return 'Óptimo';
+  if (hours >= 6) return 'Aceptable';
+  return 'Insuficiente';
 };
 
-const CalendarDay = ({ day, quality, hours, onPress, isToday }) => {
+const CalendarDay = ({ day, hours, onPress, isToday }) => {
   const scaleAnim = useRef(new Animated.Value(1)).current;
 
   const handlePressIn = () => {
@@ -114,7 +128,7 @@ const CalendarDay = ({ day, quality, hours, onPress, isToday }) => {
     return <View style={styles.emptyDay} />;
   }
 
-  const color = getDayColor(quality);
+  const color = getDayColor(hours);
 
   return (
     <TouchableOpacity
@@ -130,14 +144,14 @@ const CalendarDay = ({ day, quality, hours, onPress, isToday }) => {
           {
             backgroundColor: color,
             transform: [{ scale: scaleAnim }],
-            borderWidth: isToday ? 3 : 0,
-            borderColor: THEME_COLORS.light,
+            borderWidth: isToday ? 2 : 0,
+            borderColor: COLORS.accent,
           },
         ]}
       >
         <Text style={[
           styles.dayText,
-          quality === SLEEP_QUALITY.NONE && styles.dayTextDisabled
+          hours === 0 && styles.dayTextDisabled
         ]}>
           {day}
         </Text>
@@ -150,6 +164,8 @@ const SleepCalendarScreen = ({ navigation }) => {
   const [user, setUser] = useState(null);
   const [selectedDay, setSelectedDay] = useState(null);
   const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [sleepData, setSleepData] = useState([]);
+  const [loading, setLoading] = useState(true);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const detailsSlideAnim = useRef(new Animated.Value(100)).current;
 
@@ -168,6 +184,10 @@ const SleepCalendarScreen = ({ navigation }) => {
       duration: 800,
       useNativeDriver: true,
     }).start();
+
+    if (currentUser) {
+      loadSleepData(currentUser.uid);
+    }
   }, []);
 
   useEffect(() => {
@@ -188,8 +208,70 @@ const SleepCalendarScreen = ({ navigation }) => {
     }
   }, [selectedDay]);
 
+  const loadSleepData = async (userId) => {
+    try {
+      setLoading(true);
+      // Cargar datos del mes actual (30 días)
+      const history = await firebaseService.getSleepHistory(userId, 31);
+      setSleepData(history);
+    } catch (error) {
+      console.error('Error loading sleep data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const generateCalendarData = () => {
+    const year = currentMonth.getFullYear();
+    const month = currentMonth.getMonth();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const firstDayOfMonth = new Date(year, month, 1).getDay();
+    const startDay = firstDayOfMonth === 0 ? 6 : firstDayOfMonth - 1; // Ajustar para que Lunes = 0
+
+    const days = [];
+
+    // Días vacíos al inicio
+    for (let i = 0; i < startDay; i++) {
+      days.push({ isEmpty: true });
+    }
+
+    // Días del mes
+    for (let day = 1; day <= daysInMonth; day++) {
+      const dateStr = formatDate(new Date(year, month, day));
+      const dayData = sleepData.find(d => d.date === dateStr);
+      
+      days.push({
+        day,
+        hours: dayData ? dayData.duration.hours + (dayData.duration.minutes / 60) : 0,
+        date: dateStr,
+        sleepTime: dayData?.sleepTime || null,
+        wakeTime: dayData?.wakeTime || null,
+        duration: dayData?.duration || null,
+      });
+    }
+
+    return days;
+  };
+
+  const calendarData = generateCalendarData();
+  const today = new Date().getDate();
+  const isCurrentMonth = 
+    currentMonth.getMonth() === new Date().getMonth() &&
+    currentMonth.getFullYear() === new Date().getFullYear();
+
+  const stats = {
+    optimalDays: calendarData.filter(d => d.hours >= 7).length,
+    acceptableDays: calendarData.filter(d => d.hours >= 6 && d.hours < 7).length,
+    poorDays: calendarData.filter(d => d.hours > 0 && d.hours < 6).length,
+  };
+
+  const monthName = currentMonth.toLocaleDateString('es-ES', { 
+    month: 'long',
+    year: 'numeric' 
+  });
+
   const handleDayPress = (dayData) => {
-    if (dayData.quality !== SLEEP_QUALITY.NONE) {
+    if (dayData.hours > 0) {
       setSelectedDay(dayData);
     }
   };
@@ -198,31 +280,23 @@ const SleepCalendarScreen = ({ navigation }) => {
     setSelectedDay(null);
   };
 
-  const getQualityLabel = (quality) => {
-    switch (quality) {
-      case SLEEP_QUALITY.DEEP:
-        return 'Profundo';
-      case SLEEP_QUALITY.LIGHT:
-        return 'Ligero';
-      case SLEEP_QUALITY.POOR:
-        return 'Pesado';
-      default:
-        return 'Sin datos';
-    }
+  const formatTime = (isoString) => {
+    if (!isoString) return '--:--';
+    const date = new Date(isoString);
+    const hours = date.getHours();
+    const minutes = date.getMinutes();
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    const displayHours = hours % 12 || 12;
+    return `${displayHours}:${minutes.toString().padStart(2, '0')} ${ampm}`;
   };
 
-  const monthName = currentMonth.toLocaleDateString('es-ES', { 
-    month: 'long',
-    year: 'numeric' 
-  });
-
-  const today = new Date().getDate();
-
-  const stats = {
-    deepDays: SAMPLE_CALENDAR_DATA.filter(d => d.quality === SLEEP_QUALITY.DEEP).length,
-    lightDays: SAMPLE_CALENDAR_DATA.filter(d => d.quality === SLEEP_QUALITY.LIGHT).length,
-    poorDays: SAMPLE_CALENDAR_DATA.filter(d => d.quality === SLEEP_QUALITY.POOR).length,
-  };
+  if (loading) {
+    return (
+      <View style={[styles.container, styles.centered]}>
+        <ActivityIndicator size="large" color={COLORS.accent} />
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -231,12 +305,12 @@ const SleepCalendarScreen = ({ navigation }) => {
       <SafeAreaView style={styles.safeArea}>
         {/* Header */}
         <Animated.View style={[styles.header, { opacity: fadeAnim }]}>
-          <CustomIcons.ChevronLeft
+          <ChevronLeftIcon
             size={24}
-            color={THEME_COLORS.light}
+            color={COLORS.text}
             onPress={() => navigation.goBack()}
           />
-          <Text style={styles.headerTitle}>DÍAS DE SUEÑO</Text>
+          <Text style={styles.headerTitle}>Calendario</Text>
           <View style={{ width: 24 }} />
         </Animated.View>
 
@@ -245,55 +319,44 @@ const SleepCalendarScreen = ({ navigation }) => {
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
-          {/* Icono decorativo */}
-          <Animated.View style={[styles.decorativeIcon, { opacity: fadeAnim }]}>
-            <View style={styles.clockIconLarge}>
-              <View style={styles.sunIconLarge}>
-                {[...Array(12)].map((_, i) => (
-                  <View
-                    key={i}
-                    style={[
-                      styles.sunRayLarge,
-                      {
-                        transform: [
-                          { rotate: `${i * 30}deg` },
-                          { translateY: -45 }
-                        ]
-                      }
-                    ]}
-                  />
-                ))}
-              </View>
-              <View style={styles.moonIconLarge}>
-                <View style={styles.moonInnerLarge} />
-              </View>
-            </View>
-          </Animated.View>
-
           {/* Selector de mes */}
           <Animated.View style={[styles.monthSelector, { opacity: fadeAnim }]}>
-            <TouchableOpacity style={styles.monthArrow}>
-              <CustomIcons.ChevronLeft size={20} color={THEME_COLORS.accent} />
+            <TouchableOpacity 
+              style={styles.monthArrow}
+              onPress={() => {
+                const newMonth = new Date(currentMonth);
+                newMonth.setMonth(newMonth.getMonth() - 1);
+                setCurrentMonth(newMonth);
+              }}
+            >
+              <ChevronLeftIcon size={20} color={COLORS.accent} />
             </TouchableOpacity>
             <Text style={styles.monthText}>{monthName}</Text>
-            <TouchableOpacity style={styles.monthArrow}>
-              <CustomIcons.ChevronRight size={20} color={THEME_COLORS.accent} />
+            <TouchableOpacity 
+              style={styles.monthArrow}
+              onPress={() => {
+                const newMonth = new Date(currentMonth);
+                newMonth.setMonth(newMonth.getMonth() + 1);
+                setCurrentMonth(newMonth);
+              }}
+            >
+              <ChevronRightIcon size={20} color={COLORS.accent} />
             </TouchableOpacity>
           </Animated.View>
 
-          {/* Leyenda de calidad */}
+          {/* Leyenda */}
           <Animated.View style={[styles.qualityLegend, { opacity: fadeAnim }]}>
             <View style={styles.legendItem}>
-              <View style={[styles.legendDot, { backgroundColor: THEME_COLORS.deepSleep }]} />
-              <Text style={styles.legendText}>Profundo</Text>
+              <View style={[styles.legendDot, { backgroundColor: COLORS.success }]} />
+              <Text style={styles.legendText}>7+ hrs</Text>
             </View>
             <View style={styles.legendItem}>
-              <View style={[styles.legendDot, { backgroundColor: THEME_COLORS.lightSleep }]} />
-              <Text style={styles.legendText}>Ligero</Text>
+              <View style={[styles.legendDot, { backgroundColor: COLORS.warning }]} />
+              <Text style={styles.legendText}>6-7 hrs</Text>
             </View>
             <View style={styles.legendItem}>
-              <View style={[styles.legendDot, { backgroundColor: THEME_COLORS.poorSleep }]} />
-              <Text style={styles.legendText}>Pesado</Text>
+              <View style={[styles.legendDot, { backgroundColor: COLORS.error }]} />
+              <Text style={styles.legendText}>&lt;6 hrs</Text>
             </View>
           </Animated.View>
 
@@ -310,14 +373,13 @@ const SleepCalendarScreen = ({ navigation }) => {
 
             {/* Días del mes */}
             <View style={styles.daysGrid}>
-              {SAMPLE_CALENDAR_DATA.map((dayData, index) => (
+              {calendarData.map((dayData, index) => (
                 <CalendarDay
                   key={index}
                   day={dayData.day}
-                  quality={dayData.quality}
                   hours={dayData.hours}
                   onPress={() => handleDayPress(dayData)}
-                  isToday={dayData.day === today}
+                  isToday={isCurrentMonth && dayData.day === today}
                 />
               ))}
             </View>
@@ -328,27 +390,27 @@ const SleepCalendarScreen = ({ navigation }) => {
             <Text style={styles.statsTitle}>Resumen del mes</Text>
             <View style={styles.statsGrid}>
               <View style={styles.statCard}>
-                <View style={[styles.statIcon, { backgroundColor: THEME_COLORS.deepSleep + '30' }]}>
-                  <CustomIcons.TrendingUp size={20} color={THEME_COLORS.deepSleep} />
+                <View style={[styles.statIcon, { backgroundColor: COLORS.success + '30' }]}>
+                  <TrendingUpIcon size={20} color={COLORS.success} />
                 </View>
-                <Text style={styles.statValue}>{stats.deepDays}</Text>
-                <Text style={styles.statLabel}>Días profundos</Text>
+                <Text style={styles.statValue}>{stats.optimalDays}</Text>
+                <Text style={styles.statLabel}>Óptimos</Text>
               </View>
 
               <View style={styles.statCard}>
-                <View style={[styles.statIcon, { backgroundColor: THEME_COLORS.lightSleep + '30' }]}>
-                  <CustomIcons.Moon size={20} color={THEME_COLORS.lightSleep} />
+                <View style={[styles.statIcon, { backgroundColor: COLORS.warning + '30' }]}>
+                  <MoonIcon size={20} color={COLORS.warning} />
                 </View>
-                <Text style={styles.statValue}>{stats.lightDays}</Text>
-                <Text style={styles.statLabel}>Días ligeros</Text>
+                <Text style={styles.statValue}>{stats.acceptableDays}</Text>
+                <Text style={styles.statLabel}>Aceptables</Text>
               </View>
 
               <View style={styles.statCard}>
-                <View style={[styles.statIcon, { backgroundColor: THEME_COLORS.poorSleep + '30' }]}>
-                  <CustomIcons.AlertCircle size={20} color={THEME_COLORS.poorSleep} />
+                <View style={[styles.statIcon, { backgroundColor: COLORS.error + '30' }]}>
+                  <AlertCircleIcon size={20} color={COLORS.error} />
                 </View>
                 <Text style={styles.statValue}>{stats.poorDays}</Text>
-                <Text style={styles.statLabel}>Días pesados</Text>
+                <Text style={styles.statLabel}>Insuficientes</Text>
               </View>
             </View>
           </Animated.View>
@@ -374,42 +436,41 @@ const SleepCalendarScreen = ({ navigation }) => {
                 onPress={handleCloseDetails}
                 style={styles.closeButton}
               >
-                <CustomIcons.X size={20} color={THEME_COLORS.light} />
+                <XIcon size={20} color={COLORS.text} />
               </TouchableOpacity>
             </View>
 
             <View style={styles.detailsContent}>
               <View style={[
                 styles.qualityBadge,
-                { backgroundColor: getDayColor(selectedDay.quality) }
+                { backgroundColor: getDayColor(selectedDay.hours) }
               ]}>
                 <Text style={styles.qualityBadgeText}>
-                  {getQualityLabel(selectedDay.quality)}
+                  {getQualityLabel(selectedDay.hours)}
                 </Text>
               </View>
 
               <View style={styles.detailsRow}>
-                <CustomIcons.Clock size={20} color={THEME_COLORS.accent} />
-                <Text style={styles.detailsLabel}>Horas de sueño</Text>
-                <Text style={styles.detailsValue}>{selectedDay.hours}h</Text>
+                <ClockIcon size={20} color={COLORS.accent} />
+                <Text style={styles.detailsLabel}>Duración</Text>
+                <Text style={styles.detailsValue}>
+                  {selectedDay.duration ? 
+                    `${selectedDay.duration.hours}h ${selectedDay.duration.minutes}m` : 
+                    'N/A'}
+                </Text>
               </View>
 
               <View style={styles.detailsRow}>
-                <CustomIcons.Calendar size={20} color={THEME_COLORS.accent} />
-                <Text style={styles.detailsLabel}>Fecha</Text>
-                <Text style={styles.detailsValue}>{selectedDay.date}</Text>
+                <MoonIcon size={20} color={COLORS.accent} />
+                <Text style={styles.detailsLabel}>Dormir</Text>
+                <Text style={styles.detailsValue}>{formatTime(selectedDay.sleepTime)}</Text>
               </View>
 
-              <TouchableOpacity
-                style={styles.viewMoreButton}
-                onPress={() => {
-                  handleCloseDetails();
-                  navigation.navigate('SleepStats');
-                }}
-              >
-                <Text style={styles.viewMoreText}>Ver más detalles</Text>
-                <CustomIcons.ChevronRight size={16} color={THEME_COLORS.accent} />
-              </TouchableOpacity>
+              <View style={styles.detailsRow}>
+                <CalendarIcon size={20} color={COLORS.accent} />
+                <Text style={styles.detailsLabel}>Despertar</Text>
+                <Text style={styles.detailsValue}>{formatTime(selectedDay.wakeTime)}</Text>
+              </View>
             </View>
           </Animated.View>
         )}
@@ -421,13 +482,15 @@ const SleepCalendarScreen = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: THEME_COLORS.darkBg,
+    backgroundColor: COLORS.bg,
+  },
+  centered: {
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   safeArea: {
     flex: 1,
   },
-
-  // Header
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -437,112 +500,52 @@ const styles = StyleSheet.create({
     paddingBottom: 20,
   },
   headerTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: THEME_COLORS.light,
-    letterSpacing: 1,
+    fontSize: 20,
+    fontWeight: '600',
+    color: COLORS.text,
+    letterSpacing: -0.5,
   },
-
-  // Scroll
   scrollView: {
     flex: 1,
   },
   scrollContent: {
     paddingHorizontal: 24,
-    paddingBottom: 40,
+    paddingBottom: 150,
   },
-
-  // Icono decorativo
-  decorativeIcon: {
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  clockIconLarge: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: THEME_COLORS.cardBg,
-    borderWidth: 4,
-    borderColor: '#374151',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  sunIconLarge: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: THEME_COLORS.accent,
-    position: 'absolute',
-    right: -10,
-    top: -10,
-  },
-  sunRayLarge: {
-    position: 'absolute',
-    width: 4,
-    height: 15,
-    backgroundColor: THEME_COLORS.accent,
-    borderRadius: 2,
-    top: '50%',
-    left: '50%',
-    marginLeft: -2,
-    marginTop: -7.5,
-  },
-  moonIconLarge: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: '#E3E9F0',
-    position: 'absolute',
-    left: -10,
-    bottom: -10,
-  },
-  moonInnerLarge: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: THEME_COLORS.cardBg,
-    position: 'absolute',
-    right: 0,
-    top: 5,
-  },
-
-  // Selector de mes
   monthSelector: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: THEME_COLORS.cardBg,
+    backgroundColor: COLORS.surface,
     borderRadius: 16,
     padding: 16,
     marginBottom: 20,
     borderWidth: 1,
-    borderColor: '#374151',
+    borderColor: COLORS.border,
   },
   monthArrow: {
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: 'rgba(255, 183, 77, 0.1)',
+    backgroundColor: COLORS.surfaceLight,
     justifyContent: 'center',
     alignItems: 'center',
   },
   monthText: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: THEME_COLORS.light,
+    fontSize: 17,
+    fontWeight: '600',
+    color: COLORS.text,
     textTransform: 'capitalize',
   },
-
-  // Leyenda
   qualityLegend: {
     flexDirection: 'row',
     justifyContent: 'space-around',
-    backgroundColor: THEME_COLORS.cardBg,
+    backgroundColor: COLORS.surface,
     borderRadius: 16,
     padding: 16,
     marginBottom: 20,
     borderWidth: 1,
-    borderColor: '#374151',
+    borderColor: COLORS.border,
   },
   legendItem: {
     flexDirection: 'row',
@@ -550,24 +553,22 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   legendDot: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
   },
   legendText: {
     fontSize: 12,
-    fontWeight: '600',
-    color: THEME_COLORS.light,
+    fontWeight: '500',
+    color: COLORS.text,
   },
-
-  // Calendario
   calendarContainer: {
-    backgroundColor: THEME_COLORS.cardBg,
+    backgroundColor: COLORS.surface,
     borderRadius: 20,
     padding: 16,
     marginBottom: 20,
     borderWidth: 1,
-    borderColor: '#374151',
+    borderColor: COLORS.border,
   },
   weekDaysRow: {
     flexDirection: 'row',
@@ -579,8 +580,8 @@ const styles = StyleSheet.create({
   },
   weekDayText: {
     fontSize: 12,
-    fontWeight: '700',
-    color: '#9CA3AF',
+    fontWeight: '600',
+    color: COLORS.textSecondary,
   },
   daysGrid: {
     flexDirection: 'row',
@@ -603,21 +604,19 @@ const styles = StyleSheet.create({
   },
   dayText: {
     fontSize: 12,
-    fontWeight: '700',
-    color: THEME_COLORS.light,
+    fontWeight: '600',
+    color: COLORS.text,
   },
   dayTextDisabled: {
-    color: '#6B7280',
+    color: COLORS.textSecondary,
   },
-
-  // Estadísticas mensuales
   monthStats: {
-    marginBottom: 100,
+    marginBottom: 20,
   },
   statsTitle: {
     fontSize: 18,
-    fontWeight: '700',
-    color: THEME_COLORS.light,
+    fontWeight: '600',
+    color: COLORS.text,
     marginBottom: 16,
   },
   statsGrid: {
@@ -626,48 +625,46 @@ const styles = StyleSheet.create({
   },
   statCard: {
     flex: 1,
-    backgroundColor: THEME_COLORS.cardBg,
+    backgroundColor: COLORS.surface,
     borderRadius: 16,
     padding: 16,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#374151',
+    borderColor: COLORS.border,
   },
   statIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 8,
   },
   statValue: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: '700',
-    color: THEME_COLORS.light,
+    color: COLORS.text,
     marginBottom: 4,
   },
   statLabel: {
     fontSize: 11,
-    fontWeight: '600',
-    color: '#9CA3AF',
+    fontWeight: '500',
+    color: COLORS.textSecondary,
     textAlign: 'center',
   },
-
-  // Panel de detalles
   detailsPanel: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: THEME_COLORS.cardBg,
+    backgroundColor: COLORS.surface,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     paddingTop: 12,
     paddingHorizontal: 24,
     paddingBottom: 40,
     borderTopWidth: 1,
-    borderColor: '#374151',
+    borderColor: COLORS.border,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -4 },
     shadowOpacity: 0.3,
@@ -677,7 +674,7 @@ const styles = StyleSheet.create({
   detailsHandle: {
     width: 40,
     height: 4,
-    backgroundColor: '#4B5563',
+    backgroundColor: COLORS.border,
     borderRadius: 2,
     alignSelf: 'center',
     marginBottom: 16,
@@ -689,15 +686,15 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   detailsDate: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: '700',
-    color: THEME_COLORS.light,
+    color: COLORS.text,
   },
   closeButton: {
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    backgroundColor: COLORS.surfaceLight,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -714,41 +711,26 @@ const styles = StyleSheet.create({
   qualityBadgeText: {
     fontSize: 14,
     fontWeight: '700',
-    color: THEME_COLORS.light,
+    color: COLORS.text,
   },
   detailsRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    backgroundColor: COLORS.surfaceLight,
     padding: 16,
     borderRadius: 12,
   },
   detailsLabel: {
     flex: 1,
     fontSize: 14,
-    fontWeight: '600',
-    color: '#9CA3AF',
+    fontWeight: '500',
+    color: COLORS.textSecondary,
   },
   detailsValue: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: THEME_COLORS.light,
-  },
-  viewMoreButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: 'rgba(255, 183, 77, 0.1)',
-    paddingVertical: 14,
-    borderRadius: 12,
-    marginTop: 8,
-  },
-  viewMoreText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: THEME_COLORS.accent,
+    fontSize: 15,
+    fontWeight: '600',
+    color: COLORS.text,
   },
 });
 

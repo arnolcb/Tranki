@@ -1,4 +1,4 @@
-// src/screens/SleepScreen.js - VERSIÓN MEJORADA CON TIME PICKER
+// src/screens/SleepScreen.js - Versión Minimalista ONE PAGE
 
 import React, { useState, useEffect } from 'react';
 import {
@@ -6,28 +6,77 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
-  Alert,
   StatusBar,
   SafeAreaView,
   Platform,
-  ScrollView,
-  Modal,
+  Animated,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import auth from '@react-native-firebase/auth';
+import Svg, { Path, Circle, Rect, Line } from 'react-native-svg';
 
-import CustomIcons from '../components/CustomIcons';
-import { COLORS } from '../constants/colors';
+import firebaseService from '../services/firebase';
 
-const THEME_COLORS = {
-  primary: '#1A2332',
-  darkBg: '#0F1419',
-  cardBg: '#1E2937',
-  accent: '#FFB74D',
-  light: '#FEFFFF',
+// Componentes de iconos SVG embebidos
+const MoonIcon = ({ size = 24, color = '#fff' }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <Path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+  </Svg>
+);
+
+const SunIcon = ({ size = 24, color = '#fff' }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <Circle cx="12" cy="12" r="5" />
+    <Line x1="12" y1="1" x2="12" y2="3" />
+    <Line x1="12" y1="21" x2="12" y2="23" />
+    <Line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+    <Line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+    <Line x1="1" y1="12" x2="3" y2="12" />
+    <Line x1="21" y1="12" x2="23" y2="12" />
+    <Line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
+    <Line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+  </Svg>
+);
+
+const BarChartIcon = ({ size = 24, color = '#fff' }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <Line x1="18" y1="20" x2="18" y2="10" />
+    <Line x1="12" y1="20" x2="12" y2="4" />
+    <Line x1="6" y1="20" x2="6" y2="14" />
+  </Svg>
+);
+
+const CalendarIcon = ({ size = 24, color = '#fff' }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <Rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+    <Line x1="16" y1="2" x2="16" y2="6" />
+    <Line x1="8" y1="2" x2="8" y2="6" />
+    <Line x1="3" y1="10" x2="21" y2="10" />
+  </Svg>
+);
+
+// Helper para formatear fechas
+const formatDate = (date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const COLORS = {
+  bg: '#0A0E14',
+  surface: '#1A1F2E',
+  surfaceLight: '#252C3D',
+  accent: '#6366F1',
+  accentDark: '#4F46E5',
+  text: '#E5E7EB',
+  textSecondary: '#9CA3AF',
+  success: '#10B981',
+  border: '#2D3748',
 };
 
 const formatTime = (date) => {
+  if (!date) return '--:--';
   const hours = date.getHours();
   const minutes = date.getMinutes();
   const ampm = hours >= 12 ? 'PM' : 'AM';
@@ -37,11 +86,7 @@ const formatTime = (date) => {
 
 const calculateSleepDuration = (sleepTime, wakeTime) => {
   let diff = wakeTime - sleepTime;
-  
-  // Si la hora de despertar es menor, significa que es al día siguiente
-  if (diff < 0) {
-    diff += 24 * 60 * 60 * 1000; // Agregar 24 horas
-  }
+  if (diff < 0) diff += 24 * 60 * 60 * 1000;
   
   const hours = Math.floor(diff / (1000 * 60 * 60));
   const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
@@ -52,11 +97,14 @@ const SleepScreen = ({ navigation }) => {
   const [user, setUser] = useState(null);
   const [sleepTime, setSleepTime] = useState(null);
   const [wakeTime, setWakeTime] = useState(null);
-  
-  // Estados para el Time Picker
   const [showSleepPicker, setShowSleepPicker] = useState(false);
   const [showWakePicker, setShowWakePicker] = useState(false);
   const [tempTime, setTempTime] = useState(new Date());
+  const [saving, setSaving] = useState(false);
+  
+  // Animaciones
+  const fadeAnim = useState(new Animated.Value(0))[0];
+  const slideAnim = useState(new Animated.Value(50))[0];
 
   useEffect(() => {
     StatusBar.setBarStyle('light-content');
@@ -67,283 +115,198 @@ const SleepScreen = ({ navigation }) => {
     
     const currentUser = auth().currentUser;
     setUser(currentUser);
+
+    // Animación de entrada
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 600,
+        useNativeDriver: true,
+      }),
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 600,
+        useNativeDriver: true,
+      }),
+    ]).start();
   }, []);
 
-  // Manejar cambio de hora de dormir
   const handleSleepTimeChange = (event, selectedDate) => {
-    if (Platform.OS === 'android') {
-      setShowSleepPicker(false);
-    }
-    
-    if (selectedDate) {
-      setSleepTime(selectedDate);
-    }
+    if (Platform.OS === 'android') setShowSleepPicker(false);
+    if (selectedDate) setSleepTime(selectedDate);
   };
 
-  // Manejar cambio de hora de despertar
   const handleWakeTimeChange = (event, selectedDate) => {
-    if (Platform.OS === 'android') {
-      setShowWakePicker(false);
-    }
-    
-    if (selectedDate) {
-      setWakeTime(selectedDate);
-    }
+    if (Platform.OS === 'android') setShowWakePicker(false);
+    if (selectedDate) setWakeTime(selectedDate);
   };
 
-  // Abrir picker de hora de dormir
-  const openSleepPicker = () => {
-    setTempTime(sleepTime || new Date());
-    setShowSleepPicker(true);
-  };
-
-  // Abrir picker de hora de despertar
-  const openWakePicker = () => {
-    if (!sleepTime) {
-      Alert.alert('Aviso', 'Primero debes establecer la hora de dormir');
-      return;
-    }
-    setTempTime(wakeTime || new Date());
-    setShowWakePicker(true);
-  };
-
-  // Guardar sueño
-  const handleSaveSleep = () => {
-    if (!sleepTime || !wakeTime) {
-      Alert.alert('Error', 'Debes establecer ambas horas');
-      return;
-    }
+  const handleSaveSleep = async () => {
+    if (!sleepTime || !wakeTime || !user) return;
 
     const duration = calculateSleepDuration(sleepTime, wakeTime);
     
-    // Validar que la duración sea razonable
-    if (duration.hours > 16) {
-      Alert.alert(
-        'Advertencia',
-        '¿Realmente dormiste más de 16 horas?',
-        [
-          { text: 'Cancelar', style: 'cancel' },
-          { 
-            text: 'Sí, guardar',
-            onPress: () => saveSleepRecord(duration)
-          }
-        ]
-      );
+    // Validar duración razonable
+    if (duration.hours > 16 || duration.hours < 1) {
       return;
     }
+
+    setSaving(true);
     
-    if (duration.hours < 1) {
-      Alert.alert(
-        'Advertencia',
-        'El tiempo de sueño parece muy corto. ¿Estás seguro?',
-        [
-          { text: 'Cancelar', style: 'cancel' },
-          { 
-            text: 'Sí, guardar',
-            onPress: () => saveSleepRecord(duration)
-          }
-        ]
-      );
-      return;
-    }
-
-    saveSleepRecord(duration);
-  };
-
-  const saveSleepRecord = (duration) => {
-    Alert.alert(
-      '✅ Sueño registrado',
-      `Dormiste ${duration.hours}h ${duration.minutes}m`,
-      [
-        {
-          text: 'Ver estadísticas',
-          onPress: () => navigation.navigate('SleepStats')
+    try {
+      const sleepData = {
+        sleepTime: sleepTime.toISOString(),
+        wakeTime: wakeTime.toISOString(),
+        duration: {
+          hours: duration.hours,
+          minutes: duration.minutes
         },
-        { 
-          text: 'Continuar', 
-          style: 'cancel',
-          onPress: () => {
-            setSleepTime(null);
-            setWakeTime(null);
-          }
-        }
-      ]
-    );
-  };
+        date: formatDate(new Date())
+      };
 
-  // Botón de "ahora" rápido
-  const setNowSleep = () => {
-    setSleepTime(new Date());
-  };
-
-  const setNowWake = () => {
-    if (!sleepTime) {
-      Alert.alert('Aviso', 'Primero debes establecer la hora de dormir');
-      return;
+      await firebaseService.saveSleepRecord(user.uid, sleepData);
+      
+      // Reset y feedback
+      setTimeout(() => {
+        setSleepTime(null);
+        setWakeTime(null);
+        setSaving(false);
+      }, 800);
+      
+    } catch (error) {
+      console.error('Error saving sleep:', error);
+      setSaving(false);
     }
-    setWakeTime(new Date());
   };
 
   const duration = sleepTime && wakeTime ? calculateSleepDuration(sleepTime, wakeTime) : null;
+  const isComplete = sleepTime && wakeTime;
 
   return (
-    <View style={[styles.container, { backgroundColor: THEME_COLORS.darkBg }]}>
-      <StatusBar barStyle="light-content" />
+    <View style={styles.container}>
+      <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
       
       <SafeAreaView style={styles.safeArea}>
         {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>💤 DORMIR</Text>
-          <TouchableOpacity
-            style={styles.statsButton}
-            onPress={() => navigation.navigate('SleepStats')}
-          >
-            <CustomIcons.BarChart size={20} color={THEME_COLORS.light} />
-          </TouchableOpacity>
+          <View>
+            <Text style={styles.headerTitle}>Sueño</Text>
+            <Text style={styles.headerSubtitle}>Registra tus horas de descanso</Text>
+          </View>
+          <View style={styles.headerIcons}>
+            <TouchableOpacity
+              style={styles.iconButton}
+              onPress={() => navigation.navigate('SleepStats')}
+            >
+              <BarChartIcon size={20} color={COLORS.text} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.iconButton}
+              onPress={() => navigation.navigate('SleepCalendar')}
+            >
+              <CalendarIcon size={20} color={COLORS.text} />
+            </TouchableOpacity>
+          </View>
         </View>
 
-        <ScrollView 
-          style={styles.scrollView}
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
+        <Animated.View 
+          style={[
+            styles.content,
+            {
+              opacity: fadeAnim,
+              transform: [{ translateY: slideAnim }]
+            }
+          ]}
         >
-          {/* Título con instrucciones */}
-          <View style={styles.titleContainer}>
-            <Text style={styles.title}>Registra tu sueño</Text>
-            <Text style={styles.subtitle}>
-              {!sleepTime ? '👇 Comienza estableciendo la hora que dormiste' : 
-               !wakeTime ? '👇 Ahora establece la hora que despertaste' :
-               '✨ ¡Perfecto! Ahora puedes guardar tu registro'}
-            </Text>
-          </View>
-          
-          {/* Badge de duración */}
+          {/* Duración central */}
           {duration && (
-            <View style={styles.durationBadge}>
-              <CustomIcons.Moon size={20} color={THEME_COLORS.darkBg} />
-              <Text style={styles.durationText}>
+            <View style={styles.durationContainer}>
+              <Text style={styles.durationLabel}>Duración</Text>
+              <Text style={styles.durationValue}>
                 {duration.hours}h {duration.minutes}m
               </Text>
             </View>
           )}
 
-          {/* Tarjeta de dormir */}
-          <View style={[styles.timeCard, sleepTime && styles.timeCardActive]}>
-            <View style={styles.timeIconContainer}>
-              <CustomIcons.Moon size={40} color={sleepTime ? THEME_COLORS.accent : '#6B7280'} />
-            </View>
-            <Text style={[styles.timeLabel, sleepTime && styles.timeLabelActive]}>
-              Hora que dormiste
-            </Text>
-            
-            {sleepTime ? (
-              <View style={styles.timeDisplayContainer}>
-                <Text style={styles.timeDisplay}>{formatTime(sleepTime)}</Text>
-                <TouchableOpacity
-                  style={styles.editButton}
-                  onPress={openSleepPicker}
-                >
-                  <CustomIcons.Edit2 size={16} color={THEME_COLORS.accent} />
-                </TouchableOpacity>
-              </View>
-            ) : (
-              <View style={styles.buttonGroup}>
-                <TouchableOpacity
-                  style={[styles.setTimeButton, styles.nowButton]}
-                  onPress={setNowSleep}
-                >
-                  <CustomIcons.Clock size={18} color={THEME_COLORS.darkBg} />
-                  <Text style={styles.setTimeButtonText}>Ahora</Text>
-                </TouchableOpacity>
-                
-                <TouchableOpacity
-                  style={[styles.setTimeButton, styles.customButton]}
-                  onPress={openSleepPicker}
-                >
-                  <CustomIcons.Calendar size={18} color={THEME_COLORS.light} />
-                  <Text style={[styles.setTimeButtonText, styles.customButtonText]}>
-                    Elegir hora
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            )}
-          </View>
-
-          {/* Tarjeta de despertar */}
-          <View style={[
-            styles.timeCard, 
-            !sleepTime && styles.timeCardDisabled,
-            wakeTime && styles.timeCardActive
-          ]}>
-            <View style={styles.timeIconContainer}>
-              <CustomIcons.Sun size={40} color={wakeTime ? THEME_COLORS.accent : '#6B7280'} />
-            </View>
-            <Text style={[
-              styles.timeLabel, 
-              !sleepTime && styles.timeLabelDisabled,
-              wakeTime && styles.timeLabelActive
-            ]}>
-              Hora que despertaste
-            </Text>
-            
-            {wakeTime ? (
-              <View style={styles.timeDisplayContainer}>
-                <Text style={styles.timeDisplay}>{formatTime(wakeTime)}</Text>
-                <TouchableOpacity
-                  style={styles.editButton}
-                  onPress={openWakePicker}
-                  disabled={!sleepTime}
-                >
-                  <CustomIcons.Edit2 size={16} color={THEME_COLORS.accent} />
-                </TouchableOpacity>
-              </View>
-            ) : (
-              <View style={styles.buttonGroup}>
-                <TouchableOpacity
-                  style={[styles.setTimeButton, styles.nowButton, !sleepTime && styles.buttonDisabled]}
-                  onPress={setNowWake}
-                  disabled={!sleepTime}
-                >
-                  <CustomIcons.Clock size={18} color={sleepTime ? THEME_COLORS.darkBg : '#6B7280'} />
-                  <Text style={[
-                    styles.setTimeButtonText,
-                    !sleepTime && styles.setTimeButtonTextDisabled
-                  ]}>
-                    Ahora
-                  </Text>
-                </TouchableOpacity>
-                
-                <TouchableOpacity
-                  style={[styles.setTimeButton, styles.customButton, !sleepTime && styles.buttonDisabled]}
-                  onPress={openWakePicker}
-                  disabled={!sleepTime}
-                >
-                  <CustomIcons.Calendar size={18} color={sleepTime ? THEME_COLORS.light : '#6B7280'} />
-                  <Text style={[
-                    styles.setTimeButtonText, 
-                    styles.customButtonText,
-                    !sleepTime && styles.setTimeButtonTextDisabled
-                  ]}>
-                    Elegir hora
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            )}
-          </View>
-
-          {/* Botón guardar */}
-          {sleepTime && wakeTime && (
+          {/* Time Cards */}
+          <View style={styles.timeCardsContainer}>
+            {/* Sleep Time */}
             <TouchableOpacity
-              style={styles.saveButton}
-              onPress={handleSaveSleep}
+              style={[styles.timeCard, sleepTime && styles.timeCardActive]}
+              onPress={() => {
+                setTempTime(sleepTime || new Date());
+                setShowSleepPicker(true);
+              }}
+              activeOpacity={0.7}
             >
-              <CustomIcons.Check size={20} color={THEME_COLORS.darkBg} />
-              <Text style={styles.saveButtonText}>Registrar sueño</Text>
+              <View style={styles.timeIconWrapper}>
+                <MoonIcon 
+                  size={32} 
+                  color={sleepTime ? COLORS.accent : COLORS.textSecondary}
+                />
+              </View>
+              <Text style={[styles.timeLabel, sleepTime && styles.timeLabelActive]}>
+                Dormir
+              </Text>
+              <Text style={[styles.timeValue, !sleepTime && styles.timeValueEmpty]}>
+                {formatTime(sleepTime)}
+              </Text>
+            </TouchableOpacity>
+
+            {/* Wake Time */}
+            <TouchableOpacity
+              style={[
+                styles.timeCard,
+                !sleepTime && styles.timeCardDisabled,
+                wakeTime && styles.timeCardActive
+              ]}
+              onPress={() => {
+                if (!sleepTime) return;
+                setTempTime(wakeTime || new Date());
+                setShowWakePicker(true);
+              }}
+              activeOpacity={0.7}
+              disabled={!sleepTime}
+            >
+              <View style={styles.timeIconWrapper}>
+                <SunIcon 
+                  size={32} 
+                  color={wakeTime ? COLORS.accent : COLORS.textSecondary}
+                />
+              </View>
+              <Text style={[
+                styles.timeLabel,
+                !sleepTime && styles.timeLabelDisabled,
+                wakeTime && styles.timeLabelActive
+              ]}>
+                Despertar
+              </Text>
+              <Text style={[
+                styles.timeValue,
+                !sleepTime && styles.timeValueDisabled,
+                !wakeTime && styles.timeValueEmpty
+              ]}>
+                {formatTime(wakeTime)}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Action Button */}
+          {isComplete && (
+            <TouchableOpacity
+              style={[styles.saveButton, saving && styles.saveButtonSaving]}
+              onPress={handleSaveSleep}
+              disabled={saving}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.saveButtonText}>
+                {saving ? 'Guardando...' : 'Guardar registro'}
+              </Text>
             </TouchableOpacity>
           )}
 
-          {/* Botón reset */}
-          {(sleepTime || wakeTime) && (
+          {/* Reset Button */}
+          {(sleepTime || wakeTime) && !saving && (
             <TouchableOpacity
               style={styles.resetButton}
               onPress={() => {
@@ -351,33 +314,13 @@ const SleepScreen = ({ navigation }) => {
                 setWakeTime(null);
               }}
             >
-              <CustomIcons.X size={16} color="#EF4444" />
               <Text style={styles.resetButtonText}>Reiniciar</Text>
             </TouchableOpacity>
           )}
-
-          {/* Botones de navegación rápida */}
-          <View style={styles.quickActions}>
-            <TouchableOpacity
-              style={styles.quickActionButton}
-              onPress={() => navigation.navigate('SleepStats')}
-            >
-              <CustomIcons.BarChart size={18} color={THEME_COLORS.light} />
-              <Text style={styles.quickActionText}>Estadísticas</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity
-              style={styles.quickActionButton}
-              onPress={() => navigation.navigate('SleepCalendar')}
-            >
-              <CustomIcons.Calendar size={18} color={THEME_COLORS.light} />
-              <Text style={styles.quickActionText}>Calendario</Text>
-            </TouchableOpacity>
-          </View>
-        </ScrollView>
+        </Animated.View>
       </SafeAreaView>
 
-      {/* Time Picker para hora de dormir */}
+      {/* Time Pickers */}
       {showSleepPicker && (
         <DateTimePicker
           value={tempTime}
@@ -388,7 +331,6 @@ const SleepScreen = ({ navigation }) => {
         />
       )}
 
-      {/* Time Picker para hora de despertar */}
       {showWakePicker && (
         <DateTimePicker
           value={tempTime}
@@ -405,15 +347,10 @@ const SleepScreen = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: COLORS.bg,
   },
   safeArea: {
     flex: 1,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingBottom: 120,
   },
   header: {
     flexDirection: 'row',
@@ -424,206 +361,140 @@ const styles = StyleSheet.create({
     paddingBottom: 20,
   },
   headerTitle: {
-    fontSize: 26,
-    fontWeight: '700',
-    color: THEME_COLORS.light,
-    letterSpacing: 1,
-  },
-  statsButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  titleContainer: {
-    paddingHorizontal: 24,
-    marginTop: 10,
-    marginBottom: 30,
-  },
-  title: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: THEME_COLORS.light,
-    textAlign: 'center',
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: 'rgba(255, 255, 255, 0.7)',
-    textAlign: 'center',
-    lineHeight: 20,
-  },
-  durationBadge: {
-    flexDirection: 'row',
-    alignSelf: 'center',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: THEME_COLORS.accent,
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 25,
-    marginBottom: 30,
-    shadowColor: THEME_COLORS.accent,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 8,
-    elevation: 8,
-  },
-  durationText: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: THEME_COLORS.darkBg,
+    fontSize: 28,
+    fontWeight: '600',
+    color: COLORS.text,
     letterSpacing: -0.5,
   },
-  timeCard: {
-    backgroundColor: THEME_COLORS.cardBg,
-    borderRadius: 20,
-    padding: 24,
-    marginHorizontal: 24,
-    marginBottom: 16,
-    borderWidth: 2,
-    borderColor: '#374151',
+  headerSubtitle: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: COLORS.textSecondary,
+    marginTop: 2,
+    letterSpacing: 0.2,
   },
-  timeCardActive: {
-    borderColor: THEME_COLORS.accent,
-    backgroundColor: '#1F2937',
-  },
-  timeCardDisabled: {
-    opacity: 0.5,
-  },
-  timeIconContainer: {
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  timeLabel: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#9CA3AF',
-    textAlign: 'center',
-    marginBottom: 20,
-  },
-  timeLabelActive: {
-    color: THEME_COLORS.light,
-  },
-  timeLabelDisabled: {
-    color: '#6B7280',
-  },
-  timeDisplayContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 16,
-  },
-  timeDisplay: {
-    fontSize: 36,
-    fontWeight: '700',
-    color: THEME_COLORS.accent,
-    letterSpacing: -1,
-  },
-  editButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255, 183, 77, 0.2)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  buttonGroup: {
+  headerIcons: {
     flexDirection: 'row',
     gap: 12,
   },
-  setTimeButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 14,
+  iconButton: {
+    width: 40,
+    height: 40,
     borderRadius: 12,
+    backgroundColor: COLORS.surface,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.border,
   },
-  nowButton: {
-    backgroundColor: THEME_COLORS.accent,
+  content: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingBottom: 60,
   },
-  customButton: {
-    backgroundColor: 'transparent',
-    borderWidth: 2,
-    borderColor: THEME_COLORS.accent,
+  durationContainer: {
+    alignItems: 'center',
+    marginBottom: 40,
   },
-  buttonDisabled: {
-    backgroundColor: '#4B5563',
-    borderColor: '#4B5563',
+  durationLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: COLORS.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 1.2,
+    marginBottom: 8,
   },
-  setTimeButtonText: {
-    fontSize: 15,
+  durationValue: {
+    fontSize: 48,
     fontWeight: '700',
-    color: THEME_COLORS.darkBg,
+    color: COLORS.accent,
+    letterSpacing: -2,
   },
-  customButtonText: {
-    color: THEME_COLORS.light,
+  timeCardsContainer: {
+    flexDirection: 'row',
+    gap: 16,
+    width: '100%',
+    marginBottom: 32,
   },
-  setTimeButtonTextDisabled: {
-    color: '#9CA3AF',
+  timeCard: {
+    flex: 1,
+    backgroundColor: COLORS.surface,
+    borderRadius: 20,
+    padding: 24,
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: COLORS.border,
+    minHeight: 180,
+    justifyContent: 'center',
+  },
+  timeCardActive: {
+    borderColor: COLORS.accent,
+    backgroundColor: COLORS.surfaceLight,
+  },
+  timeCardDisabled: {
+    opacity: 0.4,
+  },
+  timeIconWrapper: {
+    marginBottom: 16,
+  },
+  timeLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: COLORS.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginBottom: 12,
+  },
+  timeLabelActive: {
+    color: COLORS.text,
+  },
+  timeLabelDisabled: {
+    color: COLORS.textSecondary,
+  },
+  timeValue: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: COLORS.text,
+    letterSpacing: -0.5,
+  },
+  timeValueEmpty: {
+    color: COLORS.textSecondary,
+  },
+  timeValueDisabled: {
+    color: COLORS.textSecondary,
   },
   saveButton: {
-    backgroundColor: THEME_COLORS.accent,
+    width: '100%',
+    backgroundColor: COLORS.accent,
     paddingVertical: 18,
     borderRadius: 16,
-    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    marginTop: 24,
-    marginHorizontal: 24,
-    shadowColor: THEME_COLORS.accent,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.4,
-    shadowRadius: 12,
-    elevation: 12,
+    shadowColor: COLORS.accent,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3,
+    shadowRadius: 16,
+    elevation: 8,
+  },
+  saveButtonSaving: {
+    backgroundColor: COLORS.accentDark,
+    opacity: 0.7,
   },
   saveButtonText: {
     fontSize: 17,
     fontWeight: '700',
-    color: THEME_COLORS.darkBg,
+    color: '#FFFFFF',
+    letterSpacing: 0.5,
   },
   resetButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
+    marginTop: 16,
     paddingVertical: 12,
-    marginTop: 12,
-    marginHorizontal: 24,
   },
   resetButtonText: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '600',
-    color: '#EF4444',
-  },
-  quickActions: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 30,
-    paddingHorizontal: 24,
-  },
-  quickActionButton: {
-    flex: 1,
-    backgroundColor: THEME_COLORS.cardBg,
-    paddingVertical: 14,
-    borderRadius: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    borderWidth: 1,
-    borderColor: '#374151',
-  },
-  quickActionText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: THEME_COLORS.light,
+    color: COLORS.textSecondary,
   },
 });
 

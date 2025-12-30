@@ -3,7 +3,7 @@ import {NavigationContainer} from '@react-navigation/native';
 import {createStackNavigator} from '@react-navigation/stack';
 import {createBottomTabNavigator} from '@react-navigation/bottom-tabs';
 import auth from '@react-native-firebase/auth';
-import {ActivityIndicator, View, StyleSheet, Platform, TouchableOpacity, Dimensions} from 'react-native';
+import {ActivityIndicator, View, StyleSheet} from 'react-native';
 
 import AuthScreen from './src/screens/AuthScreen';
 import EmotionSelectorScreen from './src/screens/EmotionSelectorScreen';
@@ -17,147 +17,41 @@ import SleepScreen from './src/screens/SleepScreen';
 import SleepStatsScreen from './src/screens/SleepStatsScreen';
 import SleepCalendarScreen from './src/screens/SleepCalendarScreen';
 
+import MindfulnessScreen from './src/screens/MindfulnessScreen';
+
 import FriendsScreen from './src/screens/FriendsScreen';
 import SearchFriendsScreen from './src/screens/SearchFriendsScreen';
 import SocialFeedScreen from './src/screens/SocialFeedScreen';
 
-import CustomIcons from './src/components/CustomIcons';
 import ImageService from './src/services/imageService';
 import {COLORS} from './src/constants/colors';
+import ModernTabBar from './ModernTabBar';
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
 
-const {width: SCREEN_WIDTH} = Dimensions.get('window');
-
 function MainTabs() {
   return (
     <Tab.Navigator
-      screenOptions={({route}) => ({
+      tabBar={(props) => <ModernTabBar {...props} />}
+      screenOptions={{
         headerShown: false,
-        tabBarShowLabel: false,
-        tabBarStyle: {
-          position: 'absolute',
-          bottom: 20,
-          // SOLUCIÓN SIMPLE: Solo marginHorizontal
-          marginHorizontal: 30, // Ajusta este valor para más/menos espacio lateral
-          backgroundColor: COLORS.white,
-          borderRadius: 35,
-          height: 70,
-          paddingBottom: 10,
-          paddingTop: 10,
-          paddingHorizontal: 10,
-          borderTopWidth: 0,
-          elevation: 20,
-          shadowColor: '#000',
-          shadowOffset: {
-            width: 0,
-            height: 10,
-          },
-          shadowOpacity: 0.15,
-          shadowRadius: 20,
-          justifyContent: 'center',
-          alignItems: 'center',
-        },
-        tabBarItemStyle: {
-          justifyContent: 'center',
-          alignItems: 'center',
-          paddingVertical: 8,
-        },
-        tabBarButton: (props) => (
-          <TouchableOpacity
-            {...props}
-            activeOpacity={0.7}
-            style={[
-              props.style,
-              {
-                justifyContent: 'center',
-                alignItems: 'center',
-              }
-            ]}
-          />
-        ),
-        tabBarIcon: ({focused}) => {
-          let IconComponent;
-          const isChatButton = route.name === 'Chat';
-
-          if (isChatButton) {
-            return (
-              <View style={{
-                width: 60,
-                height: 60,
-                borderRadius: 30,
-                backgroundColor: COLORS.primary,
-                justifyContent: 'center',
-                alignItems: 'center',
-                shadowColor: COLORS.primary,
-                shadowOffset: {width: 0, height: 6},
-                shadowOpacity: 0.45,
-                shadowRadius: 10,
-                elevation: 10,
-              }}>
-                <CustomIcons.MessageCircle size={28} color={COLORS.white} />
-              </View>
-            );
-          }
-
-          switch (route.name) {
-            case 'EmotionSelector':
-              IconComponent = CustomIcons.Home;
-              break;
-            case 'Places':
-              IconComponent = CustomIcons.MapPin;
-              break;
-            case 'Schedule':
-              IconComponent = CustomIcons.Calendar;
-              break;
-            case 'Profile':
-              IconComponent = CustomIcons.User;
-              break;
-            default:
-              IconComponent = CustomIcons.Home;
-          }
-
-          return (
-            <View style={{
-              width: 50,
-              height: 50,
-              borderRadius: 25,
-              backgroundColor: focused ? COLORS.primary + '18' : 'transparent',
-              justifyContent: 'center',
-              alignItems: 'center',
-            }}>
-              <IconComponent
-                size={25}
-                color={focused ? COLORS.primary : '#9CA3AF'}
-              />
-            </View>
-          );
-        },
-      })}>
+      }}>
       <Tab.Screen
         name="EmotionSelector"
         component={EmotionSelectorScreen}
       />
       <Tab.Screen
-        name="Places"
+        name="Sleep"
         component={SleepScreen}
       />
       <Tab.Screen
         name="Chat"
         component={ChatScreen}
-        listeners={({navigation}) => ({
-          tabPress: (e) => {
-            e.preventDefault();
-            navigation.navigate('Chat', {
-              emotion: null,
-            });
-          },
-        })}
       />
       <Tab.Screen
-        name="Schedule"
-        component={ScheduleScreen}
+        name="Mindful"
+        component={MindfulnessScreen}
       />
       <Tab.Screen
         name="Profile"

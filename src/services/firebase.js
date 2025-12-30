@@ -385,6 +385,129 @@ class FirebaseService {
     }
   }
 
+  // ========== SLEEP TRACKING ==========
+
+  // Guardar registro de sueño
+  async saveSleepRecord(userId, sleepData) {
+    try {
+      const { sleepTime, wakeTime, duration, date } = sleepData;
+      
+      const sleepRecordData = {
+        userId,
+        sleepTime,
+        wakeTime,
+        duration,
+        date,
+        quality: null, // Para futuro
+        createdAt: serverTimestamp()
+      };
+
+      const sleepRecordsRef = collection(this.db, 'users', userId, 'sleepRecords');
+      const docRef = await addDoc(sleepRecordsRef, sleepRecordData);
+
+      console.log('✅ Sleep record saved successfully:', docRef.id);
+      return { id: docRef.id, ...sleepRecordData };
+    } catch (error) {
+      console.error('❌ Error saving sleep record:', error);
+      throw error;
+    }
+  }
+
+  // Obtener registro de sueño de hoy
+  async getTodaySleepRecord(userId) {
+    try {
+      const today = formatDate(new Date());
+      
+      const sleepRecordsRef = collection(this.db, 'users', userId, 'sleepRecords');
+      const q = query(
+        sleepRecordsRef,
+        where('date', '==', today),
+        orderBy('createdAt', 'desc'),
+        limit(1)
+      );
+
+      const snapshot = await getDocs(q);
+      
+      if (!snapshot.empty) {
+        const doc = snapshot.docs[0];
+        return { id: doc.id, ...doc.data() };
+      }
+      
+      return null;
+    } catch (error) {
+      console.error('❌ Error getting today sleep record:', error);
+      return null;
+    }
+  }
+
+  // Obtener historial de sueño
+  async getSleepHistory(userId, days = 7) {
+    try {
+      const endDate = new Date();
+      const startDate = new Date();
+      startDate.setDate(endDate.getDate() - days);
+
+      const sleepRecordsRef = collection(this.db, 'users', userId, 'sleepRecords');
+      const q = query(
+        sleepRecordsRef,
+        where('date', '>=', formatDate(startDate)),
+        where('date', '<=', formatDate(endDate)),
+        orderBy('date', 'desc')
+      );
+
+      const snapshot = await getDocs(q);
+      const history = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+
+      console.log(`📊 Retrieved ${history.length} sleep records`);
+      return history;
+    } catch (error) {
+      console.error('❌ Error getting sleep history:', error);
+      return [];
+    }
+  }
+
+  // Obtener estadísticas de sueño
+  async getSleepStats(userId, days = 7) {
+    try {
+      const history = await this.getSleepHistory(userId, days);
+      
+      if (history.length === 0) {
+        return {
+          total: 0,
+          averageHours: 0,
+          averageMinutes: 0,
+          totalHours: 0
+        };
+      }
+
+      const totalMinutes = history.reduce((sum, record) => {
+        return sum + (record.duration.hours * 60) + record.duration.minutes;
+      }, 0);
+
+      const averageMinutes = totalMinutes / history.length;
+      const averageHours = Math.floor(averageMinutes / 60);
+      const averageMinutesRemainder = Math.round(averageMinutes % 60);
+
+      return {
+        total: history.length,
+        averageHours,
+        averageMinutes: averageMinutesRemainder,
+        totalHours: Math.round(totalMinutes / 60)
+      };
+    } catch (error) {
+      console.error('❌ Error calculating sleep stats:', error);
+      return {
+        total: 0,
+        averageHours: 0,
+        averageMinutes: 0,
+        totalHours: 0
+      };
+    }
+  }
+
   // ========== MÉTODOS AUXILIARES ==========
 
   // Helpers
@@ -588,8 +711,6 @@ class FirebaseService {
       throw error;
     }
   }
-
-  // Agrega esto en src/services/firebase.js
 
   // Obtener la última emoción registrada (para la pantalla de inicio)
   async getLastEmotion(userId) {

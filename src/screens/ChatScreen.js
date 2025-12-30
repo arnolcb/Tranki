@@ -23,6 +23,8 @@ import CustomIcons from '../components/CustomIcons';
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 const TAB_BAR_HEIGHT = Platform.OS === 'ios' ? 90 : 70;
 const INPUT_AREA_DEFAULT_HEIGHT = 80;
+// AJUSTE: Agregar más espacio para que el input no se tape con el tab bar
+const TAB_BAR_OFFSET = 30; // Espacio extra sobre el tab bar
 
 const ChatScreen = ({ route, navigation }) => {
   const { emotion } = route.params || {};
@@ -567,7 +569,7 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
 
-  // Input Styles
+  // Input Styles - AJUSTADO AQUÍ
   inputContainer: {
     position: 'absolute',
     left: 0,
@@ -576,7 +578,8 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.white,
     paddingHorizontal: 16,
     paddingTop: 12,
-    paddingBottom: Platform.OS === 'ios' ? TAB_BAR_HEIGHT + 8 : TAB_BAR_HEIGHT + 8,
+    // CAMBIO: Aumentar padding bottom para levantar el input
+    paddingBottom: Platform.OS === 'ios' ? TAB_BAR_HEIGHT + TAB_BAR_OFFSET : TAB_BAR_HEIGHT + TAB_BAR_OFFSET,
     borderTopWidth: 1,
     borderTopColor: '#E5E7EB',
     shadowColor: '#000',

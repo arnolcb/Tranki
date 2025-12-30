@@ -1180,6 +1180,61 @@ const CustomIcons = {
       />
     </Svg>
   ),
+ZZZ: ({ size = 24, color = '#000' }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    {/* Z grande (centro) */}
+    <Path
+      d="M7 10h6l-6 6h6"
+      stroke={color}
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+
+    {/* Z mediana (ligeramente arriba del centro) */}
+    <Path
+      d="M10 6h5l-5 5h5"
+      stroke={color}
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+
+    {/* Z pequeña (ligeramente abajo del centro) */}
+    <Path
+      d="M12 14h4l-4 4h4"
+      stroke={color}
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </Svg>
+),
+
+
+Breathing: ({ size = 24, color = '#000' }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    {/* Curvas que representan flujo de aire */}
+    <Path
+      d="M4 14c2-3 4-3 6-1s4 3 6 1 4-3 6-1"
+      stroke={color}
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <Path
+      d="M4 10c2-2 4-2 6 0s4 2 6 0 4-2 6 0"
+      stroke={color}
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </Svg>
+),
+
+
+
+
 
   TrendingUp: ({size = 24, color = '#000'}) => (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
